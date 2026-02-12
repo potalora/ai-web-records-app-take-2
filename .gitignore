@@ -1,0 +1,80 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data directories
+data/uploads/
+data/tmp/
+
+# User-provided test data (may contain real PHI)
+backend/tests/fixtures/user_provided_*
+backend/tests/fixtures/epic_export/
+backend/tests/fixtures/epic_export_sampled/
+
+# Original user data files (PHI)
+EhiExport-22259/
+Requested Record/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Test coverage
+htmlcov/
+.coverage
+coverage/
+*.lcov
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.bak
+
+# PostgreSQL
+*.sql.bak
+
+# Redis
+dump.rdb
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+
+# uv
+backend/.python-version
+
+# Ruff cache
+.ruff_cache/
+
+# Settings (keep template, ignore local copy)
+settings.json
