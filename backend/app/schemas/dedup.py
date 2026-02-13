@@ -20,7 +20,7 @@ class DedupCandidateResponse(BaseModel):
 
 class MergeRequest(BaseModel):
     candidate_id: UUID
-    primary_record_id: UUID
+    primary_record_id: UUID | None = None
 
 
 class DismissRequest(BaseModel):

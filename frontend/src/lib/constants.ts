@@ -1,17 +1,21 @@
 export const APP_NAME = "MedTimeline";
 export const APP_DESCRIPTION = "Personal Health Records Dashboard";
 
-export const RECORD_TYPE_COLORS: Record<string, string> = {
-  condition: "bg-amber-100 text-amber-800",
-  observation: "bg-teal-100 text-teal-800",
-  medication: "bg-violet-100 text-violet-800",
-  allergy: "bg-red-100 text-red-800",
-  procedure: "bg-blue-100 text-blue-800",
-  encounter: "bg-emerald-100 text-emerald-800",
-  immunization: "bg-indigo-100 text-indigo-800",
-  imaging: "bg-cyan-100 text-cyan-800",
-  document: "bg-gray-100 text-gray-800",
-  diagnostic_report: "bg-orange-100 text-orange-800",
+export const RECORD_TYPE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+  condition:         { bg: "#3d2e14", text: "#d4a843", dot: "#d4a843" },
+  observation:       { bg: "#1e2e1a", text: "#7a8c5a", dot: "#7a8c5a" },
+  medication:        { bg: "#2e1a14", text: "#c47a5a", dot: "#c47a5a" },
+  encounter:         { bg: "#1a2e28", text: "#5a8c7a", dot: "#5a8c7a" },
+  immunization:      { bg: "#2e2214", text: "#d49a40", dot: "#d49a40" },
+  procedure:         { bg: "#1a2230", text: "#5a7a8c", dot: "#5a7a8c" },
+  document:          { bg: "#252018", text: "#8a7a6a", dot: "#8a7a6a" },
+  allergy:           { bg: "#301414", text: "#c45a3c", dot: "#c45a3c" },
+  imaging:           { bg: "#28182e", text: "#8a5a7a", dot: "#8a5a7a" },
+  diagnostic_report: { bg: "#2e2a14", text: "#c4a040", dot: "#c4a040" },
+  service_request:   { bg: "#2e2214", text: "#d49a40", dot: "#d49a40" },
+  communication:     { bg: "#252018", text: "#8a7a6a", dot: "#8a7a6a" },
+  appointment:       { bg: "#1a2230", text: "#5a7a8c", dot: "#5a7a8c" },
+  care_plan:         { bg: "#1e2e1a", text: "#7a8c5a", dot: "#7a8c5a" },
 };
 
 export const RECORD_TYPE_LABELS: Record<string, string> = {
@@ -25,4 +29,27 @@ export const RECORD_TYPE_LABELS: Record<string, string> = {
   imaging: "Imaging",
   document: "Documents",
   diagnostic_report: "Diagnostic Reports",
+  service_request: "Service Requests",
+  communication: "Communications",
+  appointment: "Appointments",
+  care_plan: "Care Plans",
 };
+
+export const RECORD_TYPE_SHORT: Record<string, string> = {
+  condition: "COND",
+  observation: "OBS",
+  medication: "MED",
+  encounter: "ENC",
+  immunization: "IMMUN",
+  procedure: "PROC",
+  document: "DOC",
+  allergy: "ALRG",
+  imaging: "IMG",
+  diagnostic_report: "DIAG",
+  service_request: "SRVREQ",
+  communication: "COMM",
+  appointment: "APPT",
+  care_plan: "CARE",
+};
+
+export const DEFAULT_RECORD_COLOR = { bg: "#252018", text: "#8a7a6a", dot: "#8a7a6a" };

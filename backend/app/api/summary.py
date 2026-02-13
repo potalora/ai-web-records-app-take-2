@@ -95,20 +95,22 @@ async def list_prompts(
         .order_by(AISummaryPrompt.generated_at.desc())
     )
     prompts = result.scalars().all()
-    return {
-        "items": [
-            {
-                "id": str(p.id),
-                "summary_type": p.summary_type,
-                "record_count": p.record_count,
-                "target_model": p.target_model,
-                "has_response": p.response_text is not None,
-                "generated_at": p.generated_at.isoformat() if p.generated_at else None,
-            }
-            for p in prompts
-        ],
-        "total": len(prompts),
-    }
+    items = []
+    for p in prompts:
+        copyable = f"System: {p.system_prompt}\n\nUser: {p.user_prompt}"
+        items.append({
+            "id": str(p.id),
+            "summary_type": p.summary_type,
+            "system_prompt": p.system_prompt,
+            "user_prompt": p.user_prompt,
+            "target_model": p.target_model,
+            "suggested_config": p.suggested_config,
+            "record_count": p.record_count,
+            "de_identification_report": p.de_identification_log,
+            "copyable_payload": copyable,
+            "generated_at": p.generated_at.isoformat() if p.generated_at else None,
+        })
+    return {"items": items}
 
 
 @router.get("/prompts/{prompt_id}")
@@ -165,8 +167,13 @@ async def paste_response(
     prompt.response_text = body.response_text
     prompt.response_pasted_at = datetime.now(timezone.utc)
     await db.commit()
+    await db.refresh(prompt)
 
-    return {"status": "stored", "prompt_id": str(prompt.id)}
+    return {
+        "id": str(prompt.id),
+        "prompt_id": str(prompt.id),
+        "response_pasted_at": prompt.response_pasted_at.isoformat(),
+    }
 
 
 @router.get("/responses")

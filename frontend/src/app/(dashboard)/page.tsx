@@ -1,48 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import type { DashboardOverview } from "@/types/api";
-import Link from "next/link";
-
-const TYPE_COLORS: Record<string, string> = {
-  condition: "bg-amber-100 text-amber-800",
-  observation: "bg-teal-100 text-teal-800",
-  medication: "bg-violet-100 text-violet-800",
-  encounter: "bg-emerald-100 text-emerald-800",
-  immunization: "bg-blue-100 text-blue-800",
-  procedure: "bg-rose-100 text-rose-800",
-  document: "bg-slate-100 text-slate-800",
-  diagnostic_report: "bg-cyan-100 text-cyan-800",
-  service_request: "bg-orange-100 text-orange-800",
-  communication: "bg-pink-100 text-pink-800",
-  appointment: "bg-indigo-100 text-indigo-800",
-  care_plan: "bg-lime-100 text-lime-800",
-  imaging: "bg-purple-100 text-purple-800",
-  allergy: "bg-red-100 text-red-800",
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  condition: "Conditions",
-  observation: "Observations",
-  medication: "Medications",
-  encounter: "Encounters",
-  immunization: "Immunizations",
-  procedure: "Procedures",
-  document: "Documents",
-  diagnostic_report: "Diagnostic Reports",
-  service_request: "Service Requests",
-  communication: "Communications",
-  appointment: "Appointments",
-  care_plan: "Care Plans",
-  imaging: "Imaging",
-  allergy: "Allergies",
-};
+import { RECORD_TYPE_COLORS, RECORD_TYPE_LABELS, DEFAULT_RECORD_COLOR } from "@/lib/constants";
+import { GlowText } from "@/components/retro/GlowText";
+import { RetroCard, RetroCardHeader, RetroCardContent } from "@/components/retro/RetroCard";
+import { StatusReadout } from "@/components/retro/StatusReadout";
+import { RetroButton } from "@/components/retro/RetroButton";
+import { RetroLoadingState } from "@/components/retro/RetroLoadingState";
+import { TerminalLog } from "@/components/retro/TerminalLog";
+import { RecordDetailSheet } from "@/components/retro/RecordDetailSheet";
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -53,11 +27,7 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-muted-foreground">Loading dashboard...</div>
-      </div>
-    );
+    return <RetroLoadingState text="LOADING DASHBOARD" />;
   }
 
   const overview = data || {
@@ -70,108 +40,101 @@ export default function DashboardPage() {
     date_range_end: null,
   };
 
+  const dateRange =
+    overview.date_range_start && overview.date_range_end
+      ? `${new Date(overview.date_range_start).getFullYear()}\u2013${new Date(overview.date_range_end).getFullYear()}`
+      : "N/A";
+
+  const logEntries = overview.recent_records.map((r) => ({
+    id: r.id,
+    timestamp: r.effective_date || r.created_at,
+    recordType: r.record_type,
+    text: r.display_text,
+  }));
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Overview of your health records
-          {overview.date_range_start && overview.date_range_end && (
-            <span className="ml-2">
-              ({new Date(overview.date_range_start).getFullYear()} - {new Date(overview.date_range_end).getFullYear()})
-            </span>
-          )}
-        </p>
-      </div>
+    <div className="space-y-6 retro-stagger">
+      <GlowText as="h1">SYSTEM STATUS</GlowText>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Records</CardDescription>
-            <CardTitle className="text-4xl">{overview.total_records}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {overview.total_uploads} upload{overview.total_uploads !== 1 ? "s" : ""}
-            </p>
-          </CardContent>
-        </Card>
-        {(["condition", "medication", "observation", "encounter"] as const).map((type) => (
-          <Card key={type}>
-            <CardHeader className="pb-2">
-              <CardDescription>{TYPE_LABELS[type] || type}</CardDescription>
-              <CardTitle className="text-4xl">{overview.records_by_type[type] || 0}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Link href={type === "observation" ? "/labs" : `/${type}s`} className="text-xs text-primary hover:underline">
-                View all
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatusReadout
+        items={[
+          { label: "RECORDS", value: overview.total_records },
+          { label: "PATIENTS", value: overview.total_patients },
+          { label: "UPLOADS", value: overview.total_uploads },
+          { label: "RANGE", value: dateRange },
+        ]}
+      />
 
+      {/* Records by Category */}
       {Object.keys(overview.records_by_type).length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Records by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <RetroCard>
+          <RetroCardHeader>
+            <GlowText as="h3" glow={false}>RECORDS BY CATEGORY</GlowText>
+          </RetroCardHeader>
+          <RetroCardContent>
             <div className="flex flex-wrap gap-2">
               {Object.entries(overview.records_by_type)
                 .sort(([, a], [, b]) => b - a)
-                .map(([type, count]) => (
-                  <span
-                    key={type}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${TYPE_COLORS[type] || "bg-gray-100 text-gray-800"}`}
-                  >
-                    {TYPE_LABELS[type] || type}: {count}
-                  </span>
-                ))}
+                .map(([type, count]) => {
+                  const colors = RECORD_TYPE_COLORS[type] || DEFAULT_RECORD_COLOR;
+                  return (
+                    <span
+                      key={type}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider"
+                      style={{
+                        backgroundColor: colors.bg,
+                        color: colors.text,
+                        borderRadius: "2px",
+                      }}
+                    >
+                      {RECORD_TYPE_LABELS[type] || type}: {count}
+                    </span>
+                  );
+                })}
             </div>
-          </CardContent>
-        </Card>
+          </RetroCardContent>
+        </RetroCard>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Records</CardTitle>
-          <CardDescription>Last 10 records added</CardDescription>
-        </CardHeader>
-        <CardContent>
+      {/* Recent Records Feed */}
+      <RetroCard>
+        <RetroCardHeader>
+          <GlowText as="h3" glow={false}>RECENT ACTIVITY LOG</GlowText>
+        </RetroCardHeader>
+        <RetroCardContent>
           {overview.recent_records.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-8 text-center">
-              <p className="mb-2">No records yet.</p>
-              <Link href="/upload" className="text-primary hover:underline">
-                Upload your first health records
+            <div className="py-8 text-center">
+              <p
+                className="text-xs tracking-wider mb-3"
+                style={{ color: "var(--retro-text-muted)" }}
+              >
+                NO RECORDS IN DATABASE
+              </p>
+              <Link href="/admin?tab=upload">
+                <RetroButton variant="ghost">UPLOAD FIRST RECORDS</RetroButton>
               </Link>
             </div>
           ) : (
-            <div className="space-y-2">
-              {overview.recent_records.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center justify-between py-2 border-b last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TYPE_COLORS[r.record_type] || "bg-gray-100"}`}
-                    >
-                      {r.record_type}
-                    </span>
-                    <span className="text-sm truncate max-w-md">{r.display_text}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {r.effective_date
-                      ? new Date(r.effective_date).toLocaleDateString()
-                      : "No date"}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <TerminalLog
+              entries={logEntries}
+              onClickEntry={(id) => setSelectedRecord(id)}
+            />
           )}
-        </CardContent>
-      </Card>
+        </RetroCardContent>
+      </RetroCard>
+
+      {/* CREATE SUMMARY CTA */}
+      <div className="flex justify-center pt-2">
+        <Link href="/summaries">
+          <RetroButton variant="large">CREATE SUMMARY</RetroButton>
+        </Link>
+      </div>
+
+      <RecordDetailSheet
+        recordId={selectedRecord}
+        open={!!selectedRecord}
+        onClose={() => setSelectedRecord(null)}
+      />
     </div>
   );
 }

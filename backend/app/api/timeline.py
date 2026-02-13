@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -22,17 +22,28 @@ async def get_timeline(
     db: AsyncSession = Depends(get_db),
 ) -> TimelineResponse:
     """Timeline data ordered by date, filterable by type."""
-    query = select(HealthRecord).where(
+    filters = [
         HealthRecord.user_id == user_id,
         HealthRecord.deleted_at.is_(None),
         HealthRecord.is_duplicate.is_(False),
         HealthRecord.effective_date.isnot(None),
-    )
+    ]
 
     if record_type:
-        query = query.where(HealthRecord.record_type == record_type)
+        filters.append(HealthRecord.record_type == record_type)
 
-    query = query.order_by(HealthRecord.effective_date.desc()).limit(limit)
+    # Total count before limit
+    count_query = select(func.count()).where(*filters)
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
+
+    # Fetch limited results
+    query = (
+        select(HealthRecord)
+        .where(*filters)
+        .order_by(HealthRecord.effective_date.desc())
+        .limit(limit)
+    )
     result = await db.execute(query)
     records = result.scalars().all()
 
@@ -48,7 +59,7 @@ async def get_timeline(
         for r in records
     ]
 
-    return TimelineResponse(events=events, total=len(events))
+    return TimelineResponse(events=events, total=total)
 
 
 @router.get("/stats", response_model=TimelineStats)

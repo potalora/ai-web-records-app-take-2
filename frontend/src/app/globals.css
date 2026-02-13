@@ -7,8 +7,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-mono-body);
+  --font-mono: var(--font-mono-body);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -47,73 +47,99 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
+/* ============================================
+   RETRO EARTH-TONE PALETTE
+   "Nostromo Earth Terminal"
+   ============================================ */
+
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Sharp corners — retro terminal feel */
+  --radius: 0.125rem;
+
+  /* Retro palette tokens */
+  --retro-bg-deep: #0d0b08;
+  --retro-bg-surface: #1a1612;
+  --retro-bg-card: #231e18;
+  --retro-bg-card-hover: #2d261e;
+  --retro-text: #e8d5b5;
+  --retro-text-dim: #9a8a72;
+  --retro-text-muted: #6b5d4d;
+  --retro-amber: #e09040;
+  --retro-amber-dim: #a06828;
+  --retro-terracotta: #c45a3c;
+  --retro-sage: #7a8c5a;
+  --retro-ochre: #d4a843;
+  --retro-sienna: #a0522d;
+  --retro-border: #3d3428;
+  --retro-border-active: #5a4a38;
+
+  /* Map shadcn semantic tokens to retro values */
+  --background: #0d0b08;
+  --foreground: #e8d5b5;
+  --card: #231e18;
+  --card-foreground: #e8d5b5;
+  --popover: #1a1612;
+  --popover-foreground: #e8d5b5;
+  --primary: #e09040;
+  --primary-foreground: #0d0b08;
+  --secondary: #2d261e;
+  --secondary-foreground: #e8d5b5;
+  --muted: #1a1612;
+  --muted-foreground: #9a8a72;
+  --accent: #2d261e;
+  --accent-foreground: #e8d5b5;
+  --destructive: #c45a3c;
+  --border: #3d3428;
+  --input: #3d3428;
+  --ring: #e09040;
+  --chart-1: #e09040;
+  --chart-2: #7a8c5a;
+  --chart-3: #d4a843;
+  --chart-4: #c45a3c;
+  --chart-5: #a0522d;
+  --sidebar: #1a1612;
+  --sidebar-foreground: #e8d5b5;
+  --sidebar-primary: #e09040;
+  --sidebar-primary-foreground: #0d0b08;
+  --sidebar-accent: #2d261e;
+  --sidebar-accent-foreground: #e8d5b5;
+  --sidebar-border: #3d3428;
+  --sidebar-ring: #e09040;
 }
 
+/* Force dark mode — we only have one mode */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0d0b08;
+  --foreground: #e8d5b5;
+  --card: #231e18;
+  --card-foreground: #e8d5b5;
+  --popover: #1a1612;
+  --popover-foreground: #e8d5b5;
+  --primary: #e09040;
+  --primary-foreground: #0d0b08;
+  --secondary: #2d261e;
+  --secondary-foreground: #e8d5b5;
+  --muted: #1a1612;
+  --muted-foreground: #9a8a72;
+  --accent: #2d261e;
+  --accent-foreground: #e8d5b5;
+  --destructive: #c45a3c;
+  --border: #3d3428;
+  --input: #3d3428;
+  --ring: #e09040;
+  --chart-1: #e09040;
+  --chart-2: #7a8c5a;
+  --chart-3: #d4a843;
+  --chart-4: #c45a3c;
+  --chart-5: #a0522d;
+  --sidebar: #1a1612;
+  --sidebar-foreground: #e8d5b5;
+  --sidebar-primary: #e09040;
+  --sidebar-primary-foreground: #0d0b08;
+  --sidebar-accent: #2d261e;
+  --sidebar-accent-foreground: #e8d5b5;
+  --sidebar-border: #3d3428;
+  --sidebar-ring: #e09040;
 }
 
 @layer base {
@@ -122,5 +148,129 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-mono-body), monospace;
   }
+}
+
+/* ============================================
+   CRT EFFECTS
+   ============================================ */
+
+/* Phosphor glow on text */
+.crt-glow {
+  text-shadow: 0 0 8px rgba(224, 144, 64, 0.4);
+}
+
+.crt-glow-strong {
+  text-shadow:
+    0 0 4px rgba(224, 144, 64, 0.6),
+    0 0 12px rgba(224, 144, 64, 0.3),
+    0 0 24px rgba(224, 144, 64, 0.1);
+}
+
+/* Retro border variants */
+.retro-border {
+  border-color: var(--retro-border);
+}
+
+.retro-border-active {
+  border-color: var(--retro-border-active);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes subtle-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.97; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(224, 144, 64, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(224, 144, 64, 0.5), 0 0 32px rgba(224, 144, 64, 0.2);
+  }
+}
+
+@keyframes loading-dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Staggered children animation */
+.retro-stagger > * {
+  animation: fade-in-up 0.3s ease-out both;
+}
+.retro-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.retro-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.retro-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.retro-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.retro-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.retro-stagger > *:nth-child(6) { animation-delay: 250ms; }
+.retro-stagger > *:nth-child(7) { animation-delay: 300ms; }
+.retro-stagger > *:nth-child(8) { animation-delay: 350ms; }
+
+/* Blinking cursor */
+.blink-cursor::after {
+  content: '\2588';
+  animation: cursor-blink 1s step-end infinite;
+  color: var(--retro-amber);
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--retro-bg-deep);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--retro-border);
+  border-radius: 1px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--retro-border-active);
+}
+
+/* ============================================
+   SELECT / NATIVE ELEMENT OVERRIDES
+   ============================================ */
+
+select {
+  background-color: var(--retro-bg-card);
+  color: var(--retro-text);
+  border-color: var(--retro-border);
+}
+
+select option {
+  background-color: var(--retro-bg-surface);
+  color: var(--retro-text);
 }

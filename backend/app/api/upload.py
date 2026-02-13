@@ -127,6 +127,7 @@ async def get_upload_status(
         filename=upload.filename,
         ingestion_status=upload.ingestion_status,
         record_count=upload.record_count,
+        total_file_count=upload.total_file_count or 1,
         ingestion_progress=upload.ingestion_progress or {},
         ingestion_errors=upload.ingestion_errors or [],
         processing_started_at=upload.processing_started_at,

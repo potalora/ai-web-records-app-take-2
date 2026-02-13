@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import AsyncGenerator
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -14,6 +16,8 @@ from app.config import settings
 from app.main import app as fastapi_app
 from app.database import get_db
 from app.models.base import Base
+from app.models.patient import Patient
+from app.models.record import HealthRecord
 
 # Import all models so metadata is populated
 import app.models  # noqa: F401
@@ -88,3 +92,154 @@ def epic_export_dir():
     user_dir = FIXTURES_DIR / "epic_export"
     synthetic_dir = FIXTURES_DIR / "sample_epic_tsv"
     return user_dir if user_dir.exists() else synthetic_dir
+
+
+# ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+
+async def auth_headers(client: AsyncClient, email: str = "test@example.com") -> tuple[dict, str]:
+    """Register a user, log in, return (headers_dict, user_id_str)."""
+    reg = await client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": "securepassword123", "display_name": "Test"},
+    )
+    user_id = reg.json()["id"]
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "securepassword123"},
+    )
+    token = login.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}, user_id
+
+
+async def create_test_patient(db_session: AsyncSession, user_id: str | UUID) -> Patient:
+    """Insert a Patient row and return it."""
+    uid = UUID(user_id) if isinstance(user_id, str) else user_id
+    patient = Patient(id=uuid4(), user_id=uid, fhir_id="test-patient-001", gender="male")
+    db_session.add(patient)
+    await db_session.commit()
+    await db_session.refresh(patient)
+    return patient
+
+
+SAMPLE_RECORDS = [
+    {
+        "record_type": "condition",
+        "fhir_resource_type": "Condition",
+        "fhir_resource": {
+            "resourceType": "Condition",
+            "code": {
+                "coding": [{"system": "http://snomed.info/sct", "code": "44054006", "display": "Type 2 diabetes"}]
+            },
+            "clinicalStatus": {"coding": [{"code": "active"}]},
+        },
+        "source_format": "fhir_r4",
+        "status": "active",
+        "category": ["encounter-diagnosis"],
+        "code_system": "http://snomed.info/sct",
+        "code_value": "44054006",
+        "code_display": "Type 2 diabetes",
+        "display_text": "Type 2 diabetes mellitus",
+    },
+    {
+        "record_type": "observation",
+        "fhir_resource_type": "Observation",
+        "fhir_resource": {
+            "resourceType": "Observation",
+            "status": "final",
+            "category": [{"coding": [{"code": "laboratory"}]}],
+            "code": {"coding": [{"system": "http://loinc.org", "code": "4548-4", "display": "Hemoglobin A1c"}]},
+            "valueQuantity": {"value": 6.8, "unit": "%"},
+            "referenceRange": [{"low": {"value": 4.0}, "high": {"value": 5.6}}],
+            "interpretation": [{"coding": [{"code": "H"}]}],
+        },
+        "source_format": "fhir_r4",
+        "status": "final",
+        "category": ["laboratory"],
+        "code_system": "http://loinc.org",
+        "code_value": "4548-4",
+        "code_display": "Hemoglobin A1c",
+        "display_text": "Hemoglobin A1c: 6.8%",
+    },
+    {
+        "record_type": "medication",
+        "fhir_resource_type": "MedicationRequest",
+        "fhir_resource": {
+            "resourceType": "MedicationRequest",
+            "status": "active",
+            "medicationCodeableConcept": {"text": "Metformin 500mg"},
+        },
+        "source_format": "fhir_r4",
+        "status": "active",
+        "category": ["medication"],
+        "code_system": None,
+        "code_value": None,
+        "code_display": "Metformin 500mg",
+        "display_text": "Metformin 500mg — Take twice daily",
+    },
+    {
+        "record_type": "encounter",
+        "fhir_resource_type": "Encounter",
+        "fhir_resource": {
+            "resourceType": "Encounter",
+            "status": "finished",
+            "class": {"code": "AMB"},
+            "type": [{"text": "Office visit"}],
+        },
+        "source_format": "fhir_r4",
+        "status": "finished",
+        "category": ["encounter"],
+        "code_system": None,
+        "code_value": None,
+        "code_display": "Office visit",
+        "display_text": "Office visit",
+    },
+    {
+        "record_type": "immunization",
+        "fhir_resource_type": "Immunization",
+        "fhir_resource": {
+            "resourceType": "Immunization",
+            "status": "completed",
+            "vaccineCode": {"coding": [{"display": "Influenza vaccine"}]},
+        },
+        "source_format": "fhir_r4",
+        "status": "completed",
+        "category": ["immunization"],
+        "code_system": None,
+        "code_value": None,
+        "code_display": "Influenza vaccine",
+        "display_text": "Influenza vaccine",
+    },
+]
+
+
+async def seed_test_records(
+    db_session: AsyncSession,
+    user_id: str | UUID,
+    patient_id: str | UUID,
+    count: int = 5,
+) -> list[HealthRecord]:
+    """Insert varied HealthRecord rows. Returns the created records."""
+    uid = UUID(user_id) if isinstance(user_id, str) else user_id
+    pid = UUID(patient_id) if isinstance(patient_id, str) else patient_id
+
+    records = []
+    base_date = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    for i in range(count):
+        sample = SAMPLE_RECORDS[i % len(SAMPLE_RECORDS)]
+        rec = HealthRecord(
+            id=uuid4(),
+            patient_id=pid,
+            user_id=uid,
+            effective_date=base_date + timedelta(days=i),
+            **sample,
+        )
+        db_session.add(rec)
+        records.append(rec)
+
+    await db_session.commit()
+    for r in records:
+        await db_session.refresh(r)
+    return records

@@ -19,10 +19,14 @@ router = APIRouter(prefix="/dedup", tags=["dedup"])
 
 @router.get("/candidates")
 async def list_candidates(
+    page: int = 1,
+    limit: int = 20,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """List dedup candidates with record details."""
+    """List dedup candidates with record details (paginated)."""
+    from sqlalchemy import func
+
     # Get user's record IDs
     records_query = select(HealthRecord.id).where(HealthRecord.user_id == user_id)
     result = await db.execute(records_query)
@@ -31,7 +35,17 @@ async def list_candidates(
     if not record_ids:
         return {"items": [], "total": 0}
 
-    # Get candidates for user's records
+    # Count total pending candidates
+    count_result = await db.execute(
+        select(func.count(DedupCandidate.id)).where(
+            DedupCandidate.record_a_id.in_(record_ids),
+            DedupCandidate.status == "pending",
+        )
+    )
+    total = count_result.scalar() or 0
+
+    # Get paginated candidates
+    offset = (page - 1) * limit
     candidates_result = await db.execute(
         select(DedupCandidate)
         .where(
@@ -39,6 +53,8 @@ async def list_candidates(
             DedupCandidate.status == "pending",
         )
         .order_by(DedupCandidate.similarity_score.desc())
+        .offset(offset)
+        .limit(limit)
     )
     candidates = candidates_result.scalars().all()
 
@@ -83,7 +99,7 @@ async def list_candidates(
             else None,
         })
 
-    return {"items": items, "total": len(items)}
+    return {"items": items, "total": total}
 
 
 @router.post("/merge")
@@ -100,10 +116,11 @@ async def merge_records(
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
-    # Determine which record to mark as duplicate
+    # Determine primary and secondary records
+    primary_id = body.primary_record_id if body.primary_record_id else candidate.record_a_id
     secondary_id = (
         candidate.record_b_id
-        if body.primary_record_id == candidate.record_a_id
+        if primary_id == candidate.record_a_id
         else candidate.record_a_id
     )
 
@@ -117,14 +134,18 @@ async def merge_records(
     secondary = sec_result.scalar_one_or_none()
     if secondary:
         secondary.is_duplicate = True
-        secondary.merged_into_id = body.primary_record_id
+        secondary.merged_into_id = primary_id
 
     candidate.status = "merged"
     candidate.resolved_by = user_id
     candidate.resolved_at = datetime.now(timezone.utc)
     await db.commit()
 
-    return {"status": "merged", "candidate_id": str(candidate.id)}
+    return {
+        "status": "merged",
+        "primary_record_id": str(primary_id),
+        "archived_record_id": str(secondary_id),
+    }
 
 
 @router.post("/dismiss")
@@ -146,7 +167,7 @@ async def dismiss_candidate(
     candidate.resolved_at = datetime.now(timezone.utc)
     await db.commit()
 
-    return {"status": "dismissed", "candidate_id": str(candidate.id)}
+    return {"status": "dismissed"}
 
 
 @router.post("/scan")

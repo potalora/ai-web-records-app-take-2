@@ -18,6 +18,7 @@ class UploadStatusResponse(BaseModel):
     filename: str
     ingestion_status: str
     record_count: int
+    total_file_count: int = 1
     ingestion_progress: dict = {}
     ingestion_errors: list[Any] = []
     processing_started_at: datetime | None = None
