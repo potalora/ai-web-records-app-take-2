@@ -47,7 +47,7 @@ export function RetroButton({
       style={{
         ...variantStyles[variant],
         fontFamily: "var(--font-display)",
-        borderRadius: "2px",
+        borderRadius: "4px",
         animation: variant === "large" && !disabled ? "pulse-glow 2s ease-in-out infinite" : undefined,
       }}
       disabled={disabled}
@@ -55,7 +55,7 @@ export function RetroButton({
         if (disabled) return;
         if (variant === "ghost") {
           e.currentTarget.style.borderColor = "var(--retro-amber)";
-          e.currentTarget.style.textShadow = "0 0 8px rgba(224, 144, 64, 0.4)";
+          e.currentTarget.classList.add("retro-hover-glow");
         } else {
           e.currentTarget.style.filter = "brightness(1.15)";
           e.currentTarget.style.textShadow = "0 0 4px rgba(0,0,0,0.3)";
@@ -65,7 +65,7 @@ export function RetroButton({
         if (disabled) return;
         if (variant === "ghost") {
           e.currentTarget.style.borderColor = "var(--retro-border)";
-          e.currentTarget.style.textShadow = "none";
+          e.currentTarget.classList.remove("retro-hover-glow");
         } else {
           e.currentTarget.style.filter = "none";
           e.currentTarget.style.textShadow = "none";

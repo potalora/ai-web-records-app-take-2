@@ -28,15 +28,15 @@ export function RetroInput({ label, className, id, ...props }: RetroInputProps) 
           backgroundColor: "var(--retro-bg-deep)",
           color: "var(--retro-text)",
           borderColor: "var(--retro-border)",
-          borderRadius: "2px",
+          borderRadius: "4px",
         }}
         onFocus={(e) => {
           e.currentTarget.style.borderColor = "var(--retro-amber)";
-          e.currentTarget.style.boxShadow = "0 0 4px rgba(224, 144, 64, 0.2)";
+          e.currentTarget.classList.add("retro-focus-glow");
         }}
         onBlur={(e) => {
           e.currentTarget.style.borderColor = "var(--retro-border)";
-          e.currentTarget.style.boxShadow = "none";
+          e.currentTarget.classList.remove("retro-focus-glow");
         }}
         {...props}
       />

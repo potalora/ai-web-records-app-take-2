@@ -24,7 +24,7 @@ export function RetroBadge({ recordType, short = false, className }: RetroBadgeP
       style={{
         backgroundColor: colors.bg,
         color: colors.text,
-        borderRadius: "2px",
+        borderRadius: "4px",
       }}
     >
       {label}

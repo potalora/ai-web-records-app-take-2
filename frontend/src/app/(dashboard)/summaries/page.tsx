@@ -152,7 +152,7 @@ export default function SummariesPage() {
               borderColor: "var(--retro-border)",
               color: "var(--retro-text)",
               fontFamily: "var(--font-mono)",
-              borderRadius: "2px",
+              borderRadius: "4px",
             }}
           >
             {patients.length === 0 && (
@@ -178,7 +178,7 @@ export default function SummariesPage() {
                   style={{
                     backgroundColor: "var(--retro-ochre)",
                     color: "var(--retro-bg-deep)",
-                    borderRadius: "2px",
+                    borderRadius: "4px",
                     fontFamily: "var(--font-display)",
                   }}
                 >
@@ -244,7 +244,7 @@ export default function SummariesPage() {
                     borderColor: "var(--retro-border)",
                     color: "var(--retro-text)",
                     fontFamily: "var(--font-mono)",
-                    borderRadius: "2px",
+                    borderRadius: "4px",
                   }}
                 >
                   {CATEGORIES.map((c) => (
@@ -279,7 +279,7 @@ export default function SummariesPage() {
                       borderColor: "var(--retro-border)",
                       color: "var(--retro-text)",
                       fontFamily: "var(--font-mono)",
-                      borderRadius: "2px",
+                      borderRadius: "4px",
                     }}
                   />
                 </div>
@@ -303,7 +303,7 @@ export default function SummariesPage() {
                       borderColor: "var(--retro-border)",
                       color: "var(--retro-text)",
                       fontFamily: "var(--font-mono)",
-                      borderRadius: "2px",
+                      borderRadius: "4px",
                     }}
                   />
                 </div>
@@ -375,7 +375,7 @@ export default function SummariesPage() {
                       borderColor: "var(--retro-border)",
                       color: "var(--retro-text)",
                       fontFamily: "var(--font-mono)",
-                      borderRadius: "2px",
+                      borderRadius: "4px",
                     }}
                   />
                 </div>
@@ -411,7 +411,7 @@ export default function SummariesPage() {
                 style={{
                   backgroundColor: "var(--retro-terracotta)",
                   color: "var(--retro-text)",
-                  borderRadius: "2px",
+                  borderRadius: "4px",
                   fontFamily: "var(--font-display)",
                 }}
               >
@@ -462,7 +462,7 @@ export default function SummariesPage() {
                     backgroundColor: "var(--retro-bg-deep)",
                     color: "var(--retro-text-dim)",
                     fontFamily: "var(--font-mono)",
-                    borderRadius: "2px",
+                    borderRadius: "4px",
                     border: "1px solid var(--retro-border)",
                   }}
                 >
@@ -490,7 +490,7 @@ export default function SummariesPage() {
                       backgroundColor: "var(--retro-bg-deep)",
                       color: "var(--retro-sage)",
                       fontFamily: "var(--font-mono)",
-                      borderRadius: "2px",
+                      borderRadius: "4px",
                       border: "1px solid var(--retro-border)",
                     }}
                   >
@@ -523,7 +523,7 @@ export default function SummariesPage() {
                             className="flex justify-between py-1 px-2"
                             style={{
                               backgroundColor: "var(--retro-bg-deep)",
-                              borderRadius: "2px",
+                              borderRadius: "4px",
                             }}
                           >
                             <span
@@ -558,7 +558,7 @@ export default function SummariesPage() {
               style={{
                 backgroundColor: "var(--retro-terracotta)",
                 color: "var(--retro-text)",
-                borderRadius: "2px",
+                borderRadius: "4px",
                 fontFamily: "var(--font-display)",
               }}
             >

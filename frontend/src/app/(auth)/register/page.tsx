@@ -48,7 +48,7 @@ export default function RegisterPage() {
         style={{
           backgroundColor: "var(--retro-bg-card)",
           borderColor: "var(--retro-border)",
-          borderRadius: "2px",
+          borderRadius: "4px",
         }}
       >
         {/* Header */}
@@ -76,10 +76,10 @@ export default function RegisterPage() {
           <div
             className="p-3 border text-xs"
             style={{
-              backgroundColor: "#301414",
+              backgroundColor: "var(--record-allergy-bg)",
               borderColor: "var(--retro-terracotta)",
               color: "var(--retro-terracotta)",
-              borderRadius: "2px",
+              borderRadius: "4px",
             }}
           >
             {error}

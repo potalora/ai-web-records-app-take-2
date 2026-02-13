@@ -2,20 +2,20 @@ export const APP_NAME = "MedTimeline";
 export const APP_DESCRIPTION = "Personal Health Records Dashboard";
 
 export const RECORD_TYPE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  condition:         { bg: "#3d2e14", text: "#d4a843", dot: "#d4a843" },
-  observation:       { bg: "#1e2e1a", text: "#7a8c5a", dot: "#7a8c5a" },
-  medication:        { bg: "#2e1a14", text: "#c47a5a", dot: "#c47a5a" },
-  encounter:         { bg: "#1a2e28", text: "#5a8c7a", dot: "#5a8c7a" },
-  immunization:      { bg: "#2e2214", text: "#d49a40", dot: "#d49a40" },
-  procedure:         { bg: "#1a2230", text: "#5a7a8c", dot: "#5a7a8c" },
-  document:          { bg: "#252018", text: "#8a7a6a", dot: "#8a7a6a" },
-  allergy:           { bg: "#301414", text: "#c45a3c", dot: "#c45a3c" },
-  imaging:           { bg: "#28182e", text: "#8a5a7a", dot: "#8a5a7a" },
-  diagnostic_report: { bg: "#2e2a14", text: "#c4a040", dot: "#c4a040" },
-  service_request:   { bg: "#2e2214", text: "#d49a40", dot: "#d49a40" },
-  communication:     { bg: "#252018", text: "#8a7a6a", dot: "#8a7a6a" },
-  appointment:       { bg: "#1a2230", text: "#5a7a8c", dot: "#5a7a8c" },
-  care_plan:         { bg: "#1e2e1a", text: "#7a8c5a", dot: "#7a8c5a" },
+  condition:         { bg: "var(--record-condition-bg)", text: "var(--record-condition-text)", dot: "var(--record-condition-dot)" },
+  observation:       { bg: "var(--record-observation-bg)", text: "var(--record-observation-text)", dot: "var(--record-observation-dot)" },
+  medication:        { bg: "var(--record-medication-bg)", text: "var(--record-medication-text)", dot: "var(--record-medication-dot)" },
+  encounter:         { bg: "var(--record-encounter-bg)", text: "var(--record-encounter-text)", dot: "var(--record-encounter-dot)" },
+  immunization:      { bg: "var(--record-immunization-bg)", text: "var(--record-immunization-text)", dot: "var(--record-immunization-dot)" },
+  procedure:         { bg: "var(--record-procedure-bg)", text: "var(--record-procedure-text)", dot: "var(--record-procedure-dot)" },
+  document:          { bg: "var(--record-document-bg)", text: "var(--record-document-text)", dot: "var(--record-document-dot)" },
+  allergy:           { bg: "var(--record-allergy-bg)", text: "var(--record-allergy-text)", dot: "var(--record-allergy-dot)" },
+  imaging:           { bg: "var(--record-imaging-bg)", text: "var(--record-imaging-text)", dot: "var(--record-imaging-dot)" },
+  diagnostic_report: { bg: "var(--record-diagnostic_report-bg)", text: "var(--record-diagnostic_report-text)", dot: "var(--record-diagnostic_report-dot)" },
+  service_request:   { bg: "var(--record-service_request-bg)", text: "var(--record-service_request-text)", dot: "var(--record-service_request-dot)" },
+  communication:     { bg: "var(--record-communication-bg)", text: "var(--record-communication-text)", dot: "var(--record-communication-dot)" },
+  appointment:       { bg: "var(--record-appointment-bg)", text: "var(--record-appointment-text)", dot: "var(--record-appointment-dot)" },
+  care_plan:         { bg: "var(--record-care_plan-bg)", text: "var(--record-care_plan-text)", dot: "var(--record-care_plan-dot)" },
 };
 
 export const RECORD_TYPE_LABELS: Record<string, string> = {
@@ -52,4 +52,4 @@ export const RECORD_TYPE_SHORT: Record<string, string> = {
   care_plan: "CARE",
 };
 
-export const DEFAULT_RECORD_COLOR = { bg: "#252018", text: "#8a7a6a", dot: "#8a7a6a" };
+export const DEFAULT_RECORD_COLOR = { bg: "var(--record-default-bg)", text: "var(--record-default-text)", dot: "var(--record-default-dot)" };

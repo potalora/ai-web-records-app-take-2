@@ -55,10 +55,9 @@ export function RetroTabs({ tabs, active, onChange }: RetroTabsProps) {
             {tab.label}
             {isActive && (
               <span
-                className="absolute bottom-0 left-1 right-1 h-px"
+                className="absolute bottom-0 left-1 right-1 h-px retro-underline-glow"
                 style={{
                   backgroundColor: "var(--retro-amber)",
-                  boxShadow: "0 0 4px rgba(224, 144, 64, 0.4)",
                 }}
               />
             )}

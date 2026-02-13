@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
+import { Sun, Moon } from "lucide-react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -23,6 +25,10 @@ export function RetroNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { accessToken, clearTokens } = useAuthStore();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -92,10 +98,9 @@ export function RetroNav() {
               {/* Active underline */}
               {active && (
                 <span
-                  className="absolute bottom-0 left-2 right-2 h-px"
+                  className="absolute bottom-0 left-2 right-2 h-px retro-underline-glow"
                   style={{
                     backgroundColor: "var(--retro-amber)",
-                    boxShadow: "0 0 6px rgba(224, 144, 64, 0.5)",
                   }}
                 />
               )}
@@ -106,6 +111,19 @@ export function RetroNav() {
 
       {/* User area */}
       <div className="flex items-center gap-3 shrink-0">
+        {/* Theme toggle */}
+        {mounted && (
+          <button
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className="p-1.5 transition-colors cursor-pointer"
+            style={{ color: "var(--retro-text-dim)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--retro-amber)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--retro-text-dim)")}
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        )}
         <button
           onClick={handleLogout}
           className="text-xs tracking-wider transition-colors cursor-pointer"

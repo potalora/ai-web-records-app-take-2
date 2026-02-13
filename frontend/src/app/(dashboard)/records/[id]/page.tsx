@@ -118,7 +118,7 @@ export default function RecordDetailPage() {
               style={{
                 backgroundColor: "var(--retro-bg-deep)",
                 color: "var(--retro-text-dim)",
-                borderRadius: "2px",
+                borderRadius: "4px",
                 border: "1px solid var(--retro-border)",
               }}
             >

@@ -134,7 +134,7 @@ function AllRecordsTab() {
             backgroundColor: "var(--retro-bg-card)",
             color: "var(--retro-text)",
             borderColor: "var(--retro-border)",
-            borderRadius: "2px",
+            borderRadius: "4px",
           }}
           value={recordType}
           onChange={(e) => { setRecordType(e.target.value); setPage(1); }}
@@ -251,7 +251,7 @@ function AllRecordsTab() {
 function interpretationStyle(interpretation: string): { color: string } {
   const code = interpretation?.toUpperCase();
   if (code === "H" || code === "HH") return { color: "var(--retro-terracotta)" };
-  if (code === "L" || code === "LL") return { color: "#5a7a8c" };
+  if (code === "L" || code === "LL") return { color: "var(--record-procedure-text)" };
   if (code === "A" || code === "AA") return { color: "var(--retro-ochre)" };
   return { color: "var(--retro-text-dim)" };
 }
@@ -508,7 +508,7 @@ function UploadTab() {
         style={{
           borderColor: isDragActive ? "var(--retro-amber)" : "var(--retro-border)",
           backgroundColor: isDragActive ? "var(--retro-bg-card-hover)" : "var(--retro-bg-card)",
-          borderRadius: "2px",
+          borderRadius: "4px",
         }}
       >
         <input {...getInputProps()} />
@@ -570,7 +570,7 @@ function UploadTab() {
                 style={{
                   backgroundColor: "var(--retro-terracotta)",
                   color: "var(--retro-text)",
-                  borderRadius: "2px",
+                  borderRadius: "4px",
                 }}
               >
                 ERROR
@@ -616,7 +616,7 @@ function UploadTab() {
                         style={{
                           backgroundColor: "var(--retro-bg-deep)",
                           color: "var(--retro-text-dim)",
-                          borderRadius: "2px",
+                          borderRadius: "4px",
                         }}
                       >
                         {typeof err === "string" ? err : JSON.stringify(err)}
@@ -776,7 +776,7 @@ function UnstructuredUploadSection() {
     condition: "var(--retro-ochre)",
     lab_result: "var(--retro-sage)",
     vital: "var(--retro-sage)",
-    procedure: "#5a7a8c",
+    procedure: "var(--record-procedure-text)",
     allergy: "var(--retro-terracotta)",
     provider: "var(--retro-text-dim)",
     dosage: "var(--retro-text-muted)",
@@ -802,7 +802,7 @@ function UnstructuredUploadSection() {
         style={{
           borderColor: isUnstrDragActive ? "var(--retro-amber)" : "var(--retro-border)",
           backgroundColor: isUnstrDragActive ? "var(--retro-bg-card-hover)" : "var(--retro-bg-card)",
-          borderRadius: "2px",
+          borderRadius: "4px",
         }}
       >
         <input {...getUnstrInputProps()} />
@@ -855,7 +855,7 @@ function UnstructuredUploadSection() {
         <RetroCard>
           <RetroCardContent>
             <div className="flex items-start gap-3">
-              <span className="text-xs font-bold shrink-0 px-2 py-0.5" style={{ backgroundColor: "var(--retro-terracotta)", color: "var(--retro-text)", borderRadius: "2px" }}>
+              <span className="text-xs font-bold shrink-0 px-2 py-0.5" style={{ backgroundColor: "var(--retro-terracotta)", color: "var(--retro-text)", borderRadius: "4px" }}>
                 ERROR
               </span>
               <p className="text-xs" style={{ color: "var(--retro-text-dim)" }}>{error}</p>
@@ -905,7 +905,7 @@ function UnstructuredUploadSection() {
                     borderColor: "var(--retro-border)",
                     color: "var(--retro-text)",
                     fontFamily: "var(--font-mono)",
-                    borderRadius: "2px",
+                    borderRadius: "4px",
                   }}
                 >
                   {patients.map((p) => (
@@ -1070,7 +1070,7 @@ function DedupTab() {
                 style={{
                   backgroundColor: "var(--retro-terracotta)",
                   color: "var(--retro-text)",
-                  borderRadius: "2px",
+                  borderRadius: "4px",
                 }}
               >
                 ERROR
@@ -1131,7 +1131,7 @@ function DedupTab() {
                               style={{
                                 backgroundColor: "var(--retro-bg-surface)",
                                 color: "var(--retro-text-dim)",
-                                borderRadius: "2px",
+                                borderRadius: "4px",
                                 border: "1px solid var(--retro-border)",
                               }}
                             >
@@ -1188,7 +1188,7 @@ function DedupRecordCard({
       style={{
         backgroundColor: "var(--retro-bg-surface)",
         borderColor: "var(--retro-border)",
-        borderRadius: "2px",
+        borderRadius: "4px",
       }}
     >
       <div className="flex items-center gap-2">
@@ -1309,7 +1309,7 @@ function SystemTab() {
               style={{
                 backgroundColor: "var(--retro-sienna)",
                 color: "var(--retro-text)",
-                borderRadius: "2px",
+                borderRadius: "4px",
               }}
             >
               NOTICE

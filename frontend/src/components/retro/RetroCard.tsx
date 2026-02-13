@@ -18,7 +18,7 @@ export function RetroCard({ className, accentTop, children }: RetroCardProps) {
       style={{
         backgroundColor: "var(--retro-bg-card)",
         borderColor: "var(--retro-border)",
-        borderRadius: "2px",
+        borderRadius: "4px",
         borderTop: accentTop ? "2px solid var(--retro-amber)" : undefined,
       }}
       onMouseEnter={(e) => {

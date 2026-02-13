@@ -84,7 +84,7 @@ export default function DashboardPage() {
                       style={{
                         backgroundColor: colors.bg,
                         color: colors.text,
-                        borderRadius: "2px",
+                        borderRadius: "4px",
                       }}
                     >
                       {RECORD_TYPE_LABELS[type] || type}: {count}

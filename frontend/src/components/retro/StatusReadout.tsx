@@ -16,7 +16,7 @@ export function StatusReadout({ items }: StatusReadoutProps) {
       style={{
         backgroundColor: "var(--retro-bg-surface)",
         borderColor: "var(--retro-border)",
-        borderRadius: "2px",
+        borderRadius: "4px",
       }}
     >
       {items.map((item, i) => (

@@ -101,7 +101,7 @@ export default function TimelinePage() {
               style={{
                 backgroundColor: active ? "var(--retro-amber)" : "var(--retro-bg-card)",
                 color: active ? "var(--retro-bg-deep)" : "var(--retro-text-dim)",
-                borderRadius: "2px",
+                borderRadius: "4px",
                 border: `1px solid ${active ? "var(--retro-amber)" : "var(--retro-border)"}`,
                 fontFamily: "var(--font-display)",
               }}
@@ -214,7 +214,7 @@ export default function TimelinePage() {
                         style={{
                           backgroundColor: "var(--retro-bg-card)",
                           borderColor: "var(--retro-border)",
-                          borderRadius: "2px",
+                          borderRadius: "4px",
                         }}
                       >
                         <div className="flex items-start justify-between gap-3">
