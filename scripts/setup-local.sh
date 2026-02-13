@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-# MedTimeline — Local Development Setup for macOS (Apple Silicon)
+# AI Web Records — Local Development Setup for macOS (Apple Silicon)
 # Run once to set up PostgreSQL, Redis, and the database.
 # Prerequisites: Homebrew installed (https://brew.sh)
 
-echo "=== MedTimeline Local Setup ==="
+echo "=== AI Web Records Local Setup ==="
 
 # 1. Install services if not present
 echo "Checking dependencies..."

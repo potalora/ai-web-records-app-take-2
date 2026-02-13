@@ -78,3 +78,13 @@ backend/.python-version
 
 # Settings (keep template, ignore local copy)
 settings.json
+
+# Claude Code local config
+CLAUDE.md
+.claude/
+
+# Backend data directory
+backend/data/
+
+# Screenshots (dev artifacts)
+*.png

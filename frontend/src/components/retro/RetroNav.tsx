@@ -69,7 +69,7 @@ export function RetroNav() {
           className="crt-glow text-sm font-semibold tracking-wider"
           style={{ color: "var(--retro-amber)" }}
         >
-          MEDTIMELINE v1.0
+          AI WEB RECORDS v1.0
         </span>
       </Link>
 

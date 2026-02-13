@@ -18,7 +18,7 @@ logging.basicConfig(
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
-        title="MedTimeline API",
+        title="AI Web Records API",
         description="Personal health records management API",
         version="0.1.0",
         docs_url="/api/docs" if settings.app_env == "development" else None,

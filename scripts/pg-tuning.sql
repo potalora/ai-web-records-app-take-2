@@ -1,4 +1,4 @@
--- PostgreSQL 16 tuning for MedTimeline on M4 MacBook Air 16GB
+-- PostgreSQL 16 tuning for AI Web Records on M4 MacBook Air 16GB
 -- Run once after createdb: psql medtimeline < scripts/pg-tuning.sql
 --
 -- These settings optimize for bulk imports of large Epic EHI exports

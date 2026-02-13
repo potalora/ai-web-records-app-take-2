@@ -1,6 +1,6 @@
-# Backend Engineering Handoff: MedTimeline API Contract
+# Backend Engineering Handoff: AI Web Records API Contract
 
-This document defines the complete API contract between the MedTimeline frontend and backend. All endpoints are prefixed with `/api/v1`. The frontend expects JSON responses with the schemas defined below.
+This document defines the complete API contract between the AI Web Records frontend and backend. All endpoints are prefixed with `/api/v1`. The frontend expects JSON responses with the schemas defined below.
 
 ---
 

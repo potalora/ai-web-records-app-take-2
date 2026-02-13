@@ -1,4 +1,4 @@
-export const APP_NAME = "MedTimeline";
+export const APP_NAME = "AI Web Records App Take 2";
 export const APP_DESCRIPTION = "Personal Health Records Dashboard";
 
 export const RECORD_TYPE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {

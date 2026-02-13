@@ -27,7 +27,7 @@ export function Sidebar() {
     <aside className="flex h-full w-64 flex-col border-r bg-card">
       <div className="flex h-14 items-center border-b px-4">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <span className="text-lg">MedTimeline</span>
+          <span className="text-lg">AI Web Records</span>
         </Link>
       </div>
       <nav className="flex-1 overflow-auto p-2">

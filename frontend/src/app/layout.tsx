@@ -23,7 +23,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MedTimeline",
+  title: "AI Web Records App Take 2",
   description: "Personal Health Records Dashboard",
 };
 
