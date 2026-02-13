@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,20 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Fail fast if production is running with insecure defaults."""
+        if self.app_env != "development":
+            if self.jwt_secret_key == "change-me-in-production":
+                raise ValueError(
+                    "JWT_SECRET_KEY must be changed from default in non-development environments"
+                )
+            if not self.database_encryption_key:
+                raise ValueError(
+                    "DATABASE_ENCRYPTION_KEY must be set in non-development environments"
+                )
+        return self
 
     # Database
     database_url: str = "postgresql+asyncpg://localhost:5432/medtimeline"

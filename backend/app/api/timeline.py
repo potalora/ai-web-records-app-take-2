@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_authenticated_user_id
+from app.middleware.audit import log_audit_event
 from app.models.record import HealthRecord
 from app.schemas.timeline import TimelineEvent, TimelineResponse, TimelineStats
 
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/timeline", tags=["timeline"])
 
 @router.get("", response_model=TimelineResponse)
 async def get_timeline(
+    request: Request,
     record_type: str | None = None,
     limit: int = Query(200, ge=1, le=1000),
     user_id: UUID = Depends(get_authenticated_user_id),
@@ -59,11 +61,21 @@ async def get_timeline(
         for r in records
     ]
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="timeline.view",
+        resource_type="timeline",
+        ip_address=request.client.host if request.client else None,
+        details={"record_type": record_type, "total": total},
+    )
+
     return TimelineResponse(events=events, total=total)
 
 
 @router.get("/stats", response_model=TimelineStats)
 async def get_timeline_stats(
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> TimelineStats:
@@ -104,6 +116,14 @@ async def get_timeline_stats(
         )
     )
     date_row = date_result.one()
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="timeline.stats",
+        resource_type="timeline",
+        ip_address=request.client.host if request.client else None,
+    )
 
     return TimelineStats(
         total_records=total,

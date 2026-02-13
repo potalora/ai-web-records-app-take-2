@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_authenticated_user_id
+from app.middleware.audit import log_audit_event
 from app.models.patient import Patient
 from app.models.record import HealthRecord
 from app.models.uploaded_file import UploadedFile
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("/overview")
 async def get_overview(
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -85,6 +87,14 @@ async def get_overview(
     )
     total_uploads = upload_result.scalar() or 0
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="dashboard.overview",
+        resource_type="dashboard",
+        ip_address=request.client.host if request.client else None,
+    )
+
     return {
         "total_records": total_records,
         "total_patients": total_patients,
@@ -98,6 +108,7 @@ async def get_overview(
 
 @router.get("/labs")
 async def get_labs_dashboard(
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -139,11 +150,20 @@ async def get_labs_dashboard(
             "code_value": r.code_value,
         })
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="dashboard.labs",
+        resource_type="dashboard",
+        ip_address=request.client.host if request.client else None,
+    )
+
     return {"items": items, "total": len(items)}
 
 
 @router.get("/patients")
 async def get_patients(
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -152,6 +172,14 @@ async def get_patients(
         select(Patient).where(Patient.user_id == user_id)
     )
     patients = result.scalars().all()
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="dashboard.patients",
+        resource_type="patient",
+        ip_address=request.client.host if request.client else None,
+    )
 
     return {
         "items": [

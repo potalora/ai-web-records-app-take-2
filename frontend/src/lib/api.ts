@@ -1,5 +1,7 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -12,6 +14,24 @@ function getToken(): string | null {
     // ignore
   }
   return null;
+}
+
+// --- Idle timeout for HIPAA compliance (30-min session timeout) ---
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function resetIdleTimer() {
+  if (typeof window === "undefined") return;
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    localStorage.removeItem("medtimeline-auth");
+    window.location.href = "/login";
+  }, IDLE_TIMEOUT_MS);
+}
+
+if (typeof window !== "undefined") {
+  const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+  events.forEach((event) => window.addEventListener(event, resetIdleTimer, { passive: true }));
+  resetIdleTimer();
 }
 
 class ApiClient {

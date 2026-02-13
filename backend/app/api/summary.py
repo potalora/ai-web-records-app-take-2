@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_authenticated_user_id
+from app.middleware.audit import log_audit_event
 from app.models.ai_summary import AISummaryPrompt
 from app.models.patient import Patient
 from app.schemas.summary import (
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/summary", tags=["summary"])
 @router.post("/build-prompt", response_model=PromptResponse)
 async def build_prompt_endpoint(
     body: BuildPromptRequest,
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> PromptResponse:
@@ -76,6 +78,16 @@ async def build_prompt_endpoint(
     await db.commit()
     await db.refresh(prompt_record)
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="summary.build_prompt",
+        resource_type="ai_summary",
+        resource_id=prompt_record.id,
+        ip_address=request.client.host if request.client else None,
+        details={"summary_type": body.summary_type, "record_count": prompt_data["record_count"]},
+    )
+
     return PromptResponse(
         id=prompt_record.id,
         summary_type=prompt_data["summary_type"],
@@ -92,6 +104,7 @@ async def build_prompt_endpoint(
 
 @router.get("/prompts")
 async def list_prompts(
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -117,12 +130,22 @@ async def list_prompts(
             "copyable_payload": copyable,
             "generated_at": p.generated_at.isoformat() if p.generated_at else None,
         })
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="summary.list_prompts",
+        resource_type="ai_summary",
+        ip_address=request.client.host if request.client else None,
+    )
+
     return {"items": items}
 
 
 @router.get("/prompts/{prompt_id}")
 async def get_prompt(
     prompt_id: UUID,
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -138,6 +161,15 @@ async def get_prompt(
         raise HTTPException(status_code=404, detail="Prompt not found")
 
     copyable = f"System: {prompt.system_prompt}\n\nUser: {prompt.user_prompt}"
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="summary.view_prompt",
+        resource_type="ai_summary",
+        resource_id=prompt_id,
+        ip_address=request.client.host if request.client else None,
+    )
 
     return {
         "id": str(prompt.id),
@@ -157,6 +189,7 @@ async def get_prompt(
 @router.post("/paste-response")
 async def paste_response(
     body: PasteResponseRequest,
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -176,6 +209,15 @@ async def paste_response(
     await db.commit()
     await db.refresh(prompt)
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="summary.paste_response",
+        resource_type="ai_summary",
+        resource_id=body.prompt_id,
+        ip_address=request.client.host if request.client else None,
+    )
+
     return {
         "id": str(prompt.id),
         "prompt_id": str(prompt.id),
@@ -185,6 +227,7 @@ async def paste_response(
 
 @router.get("/responses")
 async def list_responses(
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -198,6 +241,15 @@ async def list_responses(
         .order_by(AISummaryPrompt.response_pasted_at.desc())
     )
     prompts = result.scalars().all()
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="summary.list_responses",
+        resource_type="ai_summary",
+        ip_address=request.client.host if request.client else None,
+    )
+
     return {
         "items": [
             {
@@ -218,6 +270,7 @@ async def list_responses(
 @router.post("/generate", response_model=GenerateSummaryResponse)
 async def generate_summary_endpoint(
     body: GenerateSummaryRequest,
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> GenerateSummaryResponse:
@@ -289,6 +342,16 @@ async def generate_summary_endpoint(
     db.add(prompt_record)
     await db.commit()
     await db.refresh(prompt_record)
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="summary.generate",
+        resource_type="ai_summary",
+        resource_id=prompt_record.id,
+        ip_address=request.client.host if request.client else None,
+        details={"summary_type": body.summary_type, "record_count": summary_data["record_count"]},
+    )
 
     dup_warning = None
     if summary_data.get("duplicate_warning"):

@@ -39,7 +39,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     # Clean up any leftover data from prior runs
     async with engine.begin() as conn:
         for table in [
-            "provenance", "dedup_candidates", "health_records",
+            "revoked_tokens", "provenance", "dedup_candidates", "health_records",
             "ai_summary_prompts", "uploaded_files", "patients",
             "audit_log", "users",
         ]:
@@ -54,7 +54,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     # Clean up all data after each test (reverse FK order)
     async with engine.begin() as conn:
         for table in [
-            "provenance", "dedup_candidates", "health_records",
+            "revoked_tokens", "provenance", "dedup_candidates", "health_records",
             "ai_summary_prompts", "uploaded_files", "patients",
             "audit_log", "users",
         ]:
@@ -95,6 +95,22 @@ def epic_export_dir():
 
 
 # ---------------------------------------------------------------------------
+# Rate limiter cleanup (singleton state persists between tests)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limiters():
+    """Clear rate limiter state before each test."""
+    from app.middleware.rate_limit import login_limiter, register_limiter
+    login_limiter._requests.clear()
+    register_limiter._requests.clear()
+    yield
+    login_limiter._requests.clear()
+    register_limiter._requests.clear()
+
+
+# ---------------------------------------------------------------------------
 # Test helpers
 # ---------------------------------------------------------------------------
 
@@ -103,12 +119,12 @@ async def auth_headers(client: AsyncClient, email: str = "test@example.com") -> 
     """Register a user, log in, return (headers_dict, user_id_str)."""
     reg = await client.post(
         "/api/v1/auth/register",
-        json={"email": email, "password": "securepassword123", "display_name": "Test"},
+        json={"email": email, "password": "SecurePass123!", "display_name": "Test"},
     )
     user_id = reg.json()["id"]
     login = await client.post(
         "/api/v1/auth/login",
-        json={"email": email, "password": "securepassword123"},
+        json={"email": email, "password": "SecurePass123!"},
     )
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}, user_id

@@ -6,10 +6,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Regex patterns for HIPAA identifiers
+# Regex patterns for all 18 HIPAA identifiers
 PATTERNS = {
     "ssn": (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[SSN]"),
     "phone": (re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"), "[PHONE]"),
+    "fax": (re.compile(r"\b(?:fax|facsimile)[:\s]*(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", re.IGNORECASE), "[FAX]"),
     "email": (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"), "[EMAIL]"),
     "mrn": (re.compile(r"\b(?:MRN|mrn|Medical Record Number)[:\s]*\d+\b"), "[MRN]"),
     "mrn_numeric": (re.compile(r"\b\d{8,12}\b"), None),  # Only scrub in context
@@ -24,6 +25,19 @@ PATTERNS = {
     "license": (
         re.compile(r"\b(?:license|certificate|DEA)[:\s#]*[A-Z0-9]+\b", re.IGNORECASE),
         "[LICENSE]",
+    ),
+    "vehicle_id": (re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b"), "[VIN]"),
+    "device_id": (
+        re.compile(r"\b(?:serial|UDI|device\s*(?:id|identifier))[:\s#]*[A-Za-z0-9\-]+\b", re.IGNORECASE),
+        "[DEVICE_ID]",
+    ),
+    "biometric_id": (
+        re.compile(r"\b(?:biometric|fingerprint|retina|voiceprint)[:\s#]*[A-Za-z0-9\-]+\b", re.IGNORECASE),
+        "[BIOMETRIC]",
+    ),
+    "health_plan_number": (
+        re.compile(r"\b(?:plan|policy|member|group|subscriber|beneficiary)\s*(?:number|no|#|id)[:\s#]*[A-Za-z0-9\-]+\b", re.IGNORECASE),
+        "[HEALTH_PLAN]",
     ),
 }
 
@@ -51,7 +65,11 @@ def scrub_phi(
             for part in name.split():
                 if len(part) < 2:
                     continue
-                pattern = re.compile(re.escape(part), re.IGNORECASE)
+                # Use word boundaries for short names to reduce false positives
+                if len(part) <= 3:
+                    pattern = re.compile(r"\b" + re.escape(part) + r"\b", re.IGNORECASE)
+                else:
+                    pattern = re.compile(re.escape(part), re.IGNORECASE)
                 matches = pattern.findall(scrubbed)
                 if matches:
                     report["names_scrubbed"] = report.get("names_scrubbed", 0) + len(matches)

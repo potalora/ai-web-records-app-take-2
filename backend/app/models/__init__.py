@@ -8,6 +8,7 @@ from app.models.ai_summary import AISummaryPrompt
 from app.models.deduplication import DedupCandidate
 from app.models.provenance import Provenance
 from app.models.audit import AuditLog
+from app.models.token_blacklist import RevokedToken
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "DedupCandidate",
     "Provenance",
     "AuditLog",
+    "RevokedToken",
 ]

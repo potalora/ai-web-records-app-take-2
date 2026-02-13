@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_authenticated_user_id
+from app.middleware.audit import log_audit_event
 from app.models.deduplication import DedupCandidate
 from app.models.patient import Patient
 from app.models.record import HealthRecord
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/dedup", tags=["dedup"])
 
 @router.get("/candidates")
 async def list_candidates(
+    request: Request,
     page: int = 1,
     limit: int = 20,
     user_id: UUID = Depends(get_authenticated_user_id),
@@ -99,12 +101,22 @@ async def list_candidates(
             else None,
         })
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="dedup.list_candidates",
+        resource_type="dedup",
+        ip_address=request.client.host if request.client else None,
+        details={"total": total, "page": page},
+    )
+
     return {"items": items, "total": total}
 
 
 @router.post("/merge")
 async def merge_records(
     body: MergeRequest,
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -141,6 +153,16 @@ async def merge_records(
     candidate.resolved_at = datetime.now(timezone.utc)
     await db.commit()
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="dedup.merge",
+        resource_type="dedup",
+        resource_id=body.candidate_id,
+        ip_address=request.client.host if request.client else None,
+        details={"candidate_id": str(body.candidate_id), "primary_record_id": str(primary_id)},
+    )
+
     return {
         "status": "merged",
         "primary_record_id": str(primary_id),
@@ -151,6 +173,7 @@ async def merge_records(
 @router.post("/dismiss")
 async def dismiss_candidate(
     body: DismissRequest,
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -167,11 +190,22 @@ async def dismiss_candidate(
     candidate.resolved_at = datetime.now(timezone.utc)
     await db.commit()
 
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="dedup.dismiss",
+        resource_type="dedup",
+        resource_id=body.candidate_id,
+        ip_address=request.client.host if request.client else None,
+        details={"candidate_id": str(body.candidate_id)},
+    )
+
     return {"status": "dismissed"}
 
 
 @router.post("/scan")
 async def scan_for_duplicates(
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -187,5 +221,14 @@ async def scan_for_duplicates(
     for patient in patients:
         count = await detect_duplicates(db, user_id, patient.id)
         total_found += count
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="dedup.scan",
+        resource_type="dedup",
+        ip_address=request.client.host if request.client else None,
+        details={"candidates_found": total_found},
+    )
 
     return {"candidates_found": total_found}

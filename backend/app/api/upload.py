@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,44 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 
+# --- Security helpers ---
+
+MAGIC_BYTES = {
+    ".pdf": b"%PDF",
+    ".rtf": b"{\\rtf",
+    ".tif": [b"\x49\x49\x2a\x00", b"\x4d\x4d\x00\x2a"],  # LE and BE TIFF
+    ".tiff": [b"\x49\x49\x2a\x00", b"\x4d\x4d\x00\x2a"],
+}
+
+
+def _validate_magic_bytes(content: bytes, ext: str) -> bool:
+    """Validate file content matches expected magic bytes for the extension."""
+    expected = MAGIC_BYTES.get(ext)
+    if expected is None:
+        return True  # No magic bytes check for unknown types
+    if isinstance(expected, list):
+        return any(content[:len(sig)] == sig for sig in expected)
+    return content[:len(expected)] == expected
+
+
+def _safe_file_path(upload_dir: Path, user_id: UUID, original_filename: str) -> Path:
+    """Generate a safe file path preventing path traversal attacks."""
+    # Preserve original extension only
+    ext = Path(original_filename).suffix.lower()
+    safe_name = f"{user_id}_{uuid4().hex}{ext}"
+    file_path = (upload_dir / safe_name).resolve()
+
+    # Validate the resolved path is within the upload directory
+    upload_dir_resolved = upload_dir.resolve()
+    if not str(file_path).startswith(str(upload_dir_resolved)):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    return file_path
+
+
+# --- Endpoints ---
+
+
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_file(
     file: UploadFile,
@@ -45,7 +83,7 @@ async def upload_file(
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = upload_dir / f"{user_id}_{file.filename}"
+    file_path = _safe_file_path(upload_dir, user_id, file.filename)
     with open(file_path, "wb") as f:
         content = await file.read()
         if len(content) > settings.max_file_size_mb * 1024 * 1024:
@@ -93,9 +131,16 @@ async def upload_epic_export(
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = upload_dir / f"{user_id}_{file.filename}"
+    file_path = _safe_file_path(upload_dir, user_id, file.filename)
     with open(file_path, "wb") as f:
         content = await file.read()
+        # C6: Size check for epic exports
+        max_bytes = settings.max_epic_export_size_mb * 1024 * 1024
+        if len(content) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Epic export too large. Maximum size: {settings.max_epic_export_size_mb}MB",
+            )
         f.write(content)
 
     from app.services.ingestion.coordinator import ingest_file
@@ -201,6 +246,7 @@ async def _process_unstructured(upload_id: UUID, file_path: Path, user_id: UUID)
     from app.database import async_session_factory
     from app.services.extraction.text_extractor import extract_text
     from app.services.extraction.entity_extractor import extract_entities_async
+    from app.services.ai.phi_scrubber import scrub_phi
 
     async with async_session_factory() as db:
         result = await db.execute(
@@ -220,14 +266,18 @@ async def _process_unstructured(upload_id: UUID, file_path: Path, user_id: UUID)
             upload.extracted_text = text
             await db.commit()
 
-            # Step 2: Extract entities
+            # Step 2: Scrub PHI before entity extraction (C4)
+            scrubbed_text, deident_report = scrub_phi(text)
+
+            # Step 3: Extract entities from scrubbed text
             extraction = await extract_entities_async(
-                text, upload.filename, settings.gemini_api_key
+                scrubbed_text, upload.filename, settings.gemini_api_key
             )
 
             if extraction.error:
                 upload.ingestion_status = "failed"
-                upload.ingestion_errors = [{"error": extraction.error}]
+                # M2: Sanitize entity extraction error
+                upload.ingestion_errors = [{"error": "Entity extraction failed. Please retry or contact support."}]
             else:
                 entities_json = [
                     {
@@ -247,9 +297,11 @@ async def _process_unstructured(upload_id: UUID, file_path: Path, user_id: UUID)
             await db.commit()
 
         except Exception as e:
-            logger.error("Unstructured processing failed for %s: %s", upload_id, e)
+            # H4: Log full error internally, expose only error type to client
+            logger.error("Unstructured processing failed for %s: %s", upload_id, e, exc_info=True)
+            error_type = type(e).__name__
             upload.ingestion_status = "failed"
-            upload.ingestion_errors = [{"error": str(e)}]
+            upload.ingestion_errors = [{"error": f"Processing failed: {error_type}. Contact support if this persists."}]
             upload.processing_completed_at = datetime.now(timezone.utc)
             await db.commit()
 
@@ -279,10 +331,17 @@ async def upload_unstructured(
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = upload_dir / f"{user_id}_{file.filename}"
+    file_path = _safe_file_path(upload_dir, user_id, file.filename)
     content = await file.read()
     if len(content) > settings.max_file_size_mb * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large")
+
+    # M1: Validate magic bytes
+    if not _validate_magic_bytes(content, ext):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File content does not match expected format for {ext}",
+        )
 
     with open(file_path, "wb") as f:
         f.write(content)
@@ -371,6 +430,7 @@ async def get_extraction_results(
 async def confirm_extraction(
     upload_id: UUID,
     body: ConfirmExtractionRequest,
+    request: Request,
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):

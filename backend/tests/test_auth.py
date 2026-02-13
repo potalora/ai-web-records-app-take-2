@@ -21,7 +21,7 @@ async def test_register_user(client: AsyncClient):
         "/api/v1/auth/register",
         json={
             "email": "test@example.com",
-            "password": "securepassword123",
+            "password": "SecurePass123!",
             "display_name": "Test User",
         },
     )
@@ -38,7 +38,7 @@ async def test_register_duplicate_email(client: AsyncClient):
     """Cannot register with duplicate email."""
     payload = {
         "email": "dup@example.com",
-        "password": "securepassword123",
+        "password": "SecurePass123!",
     }
     await client.post("/api/v1/auth/register", json=payload)
     response = await client.post("/api/v1/auth/register", json=payload)
@@ -60,11 +60,11 @@ async def test_login_success(client: AsyncClient):
     """Login with valid credentials returns tokens."""
     await client.post(
         "/api/v1/auth/register",
-        json={"email": "login@example.com", "password": "securepassword123"},
+        json={"email": "login@example.com", "password": "SecurePass123!"},
     )
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "login@example.com", "password": "securepassword123"},
+        json={"email": "login@example.com", "password": "SecurePass123!"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -78,7 +78,7 @@ async def test_login_wrong_password(client: AsyncClient):
     """Login with wrong password returns 401."""
     await client.post(
         "/api/v1/auth/register",
-        json={"email": "wrongpw@example.com", "password": "securepassword123"},
+        json={"email": "wrongpw@example.com", "password": "SecurePass123!"},
     )
     response = await client.post(
         "/api/v1/auth/login",
@@ -92,11 +92,11 @@ async def test_get_me_authenticated(client: AsyncClient):
     """Get current user profile with valid token."""
     await client.post(
         "/api/v1/auth/register",
-        json={"email": "me@example.com", "password": "securepassword123"},
+        json={"email": "me@example.com", "password": "SecurePass123!"},
     )
     login_resp = await client.post(
         "/api/v1/auth/login",
-        json={"email": "me@example.com", "password": "securepassword123"},
+        json={"email": "me@example.com", "password": "SecurePass123!"},
     )
     token = login_resp.json()["access_token"]
 
@@ -120,11 +120,11 @@ async def test_refresh_token(client: AsyncClient):
     """Refresh token returns new access and refresh tokens."""
     await client.post(
         "/api/v1/auth/register",
-        json={"email": "refresh@example.com", "password": "securepassword123"},
+        json={"email": "refresh@example.com", "password": "SecurePass123!"},
     )
     login_resp = await client.post(
         "/api/v1/auth/login",
-        json={"email": "refresh@example.com", "password": "securepassword123"},
+        json={"email": "refresh@example.com", "password": "SecurePass123!"},
     )
     refresh_token = login_resp.json()["refresh_token"]
 
@@ -143,11 +143,11 @@ async def test_logout(client: AsyncClient):
     """Logout returns 204."""
     await client.post(
         "/api/v1/auth/register",
-        json={"email": "logout@example.com", "password": "securepassword123"},
+        json={"email": "logout@example.com", "password": "SecurePass123!"},
     )
     login_resp = await client.post(
         "/api/v1/auth/login",
-        json={"email": "logout@example.com", "password": "securepassword123"},
+        json={"email": "logout@example.com", "password": "SecurePass123!"},
     )
     token = login_resp.json()["access_token"]
 

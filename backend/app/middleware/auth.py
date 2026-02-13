@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -16,7 +16,7 @@ ALGORITHM = "HS256"
 
 
 def create_access_token(user_id: UUID, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token."""
+    """Create a JWT access token with unique JTI for revocation."""
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.jwt_access_token_expire_minutes)
     )
@@ -24,17 +24,19 @@ def create_access_token(user_id: UUID, expires_delta: Optional[timedelta] = None
         "sub": str(user_id),
         "exp": expire,
         "type": "access",
+        "jti": str(uuid4()),
     }
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=ALGORITHM)
 
 
 def create_refresh_token(user_id: UUID) -> str:
-    """Create a JWT refresh token."""
+    """Create a JWT refresh token with unique JTI for revocation."""
     expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_token_expire_days)
     to_encode = {
         "sub": str(user_id),
         "exp": expire,
         "type": "refresh",
+        "jti": str(uuid4()),
     }
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=ALGORITHM)
 
