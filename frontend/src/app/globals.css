@@ -55,73 +55,73 @@
 :root {
   --radius: 0.25rem;
 
-  /* Retro palette tokens — light mode */
-  --retro-bg-deep: #f5f0e8;
-  --retro-bg-surface: #ede6db;
+  /* Theme palette tokens — light mode */
+  --retro-bg-deep: #f7f4ef;
+  --retro-bg-surface: #efe9df;
   --retro-bg-card: #ffffff;
-  --retro-bg-card-hover: #faf7f2;
-  --retro-text: #2c2418;
-  --retro-text-dim: #6b5d4d;
-  --retro-text-muted: #9a8a72;
-  --retro-amber: #b87333;
-  --retro-amber-dim: #96693d;
-  --retro-terracotta: #b84c35;
+  --retro-bg-card-hover: #faf6f0;
+  --retro-text: #2a2f26;
+  --retro-text-dim: #5c6358;
+  --retro-text-muted: #6b7265;
+  --retro-amber: #4a7c59;
+  --retro-amber-dim: #3d6649;
+  --retro-terracotta: #b54834;
   --retro-sage: #5a7a50;
-  --retro-ochre: #c49332;
-  --retro-sienna: #8b5a2b;
-  --retro-border: #d4c9b8;
-  --retro-border-active: #b8a892;
-  --retro-glow-rgb: 184, 115, 51;
+  --retro-ochre: #b8860b;
+  --retro-sienna: #8b6914;
+  --retro-border: #d4cdc0;
+  --retro-border-active: #b8b0a0;
+  --retro-glow-rgb: 74, 124, 89;
 
   /* shadcn semantic tokens — light mode */
-  --background: #f5f0e8;
-  --foreground: #2c2418;
+  --background: #f7f4ef;
+  --foreground: #2a2f26;
   --card: #ffffff;
-  --card-foreground: #2c2418;
+  --card-foreground: #2a2f26;
   --popover: #ffffff;
-  --popover-foreground: #2c2418;
-  --primary: #b87333;
+  --popover-foreground: #2a2f26;
+  --primary: #4a7c59;
   --primary-foreground: #ffffff;
-  --secondary: #ede6db;
-  --secondary-foreground: #2c2418;
-  --muted: #ede6db;
-  --muted-foreground: #6b5d4d;
-  --accent: #faf7f2;
-  --accent-foreground: #2c2418;
-  --destructive: #b84c35;
-  --border: #d4c9b8;
-  --input: #d4c9b8;
-  --ring: #b87333;
-  --chart-1: #b87333;
-  --chart-2: #5a7a50;
-  --chart-3: #c49332;
-  --chart-4: #b84c35;
-  --chart-5: #8b5a2b;
-  --sidebar: #ede6db;
-  --sidebar-foreground: #2c2418;
-  --sidebar-primary: #b87333;
+  --secondary: #efe9df;
+  --secondary-foreground: #2a2f26;
+  --muted: #efe9df;
+  --muted-foreground: #5c6358;
+  --accent: #faf6f0;
+  --accent-foreground: #2a2f26;
+  --destructive: #b54834;
+  --border: #d4cdc0;
+  --input: #d4cdc0;
+  --ring: #4a7c59;
+  --chart-1: #4a7c59;
+  --chart-2: #b8860b;
+  --chart-3: #5a7a50;
+  --chart-4: #b54834;
+  --chart-5: #8b6914;
+  --sidebar: #efe9df;
+  --sidebar-foreground: #2a2f26;
+  --sidebar-primary: #4a7c59;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #faf7f2;
-  --sidebar-accent-foreground: #2c2418;
-  --sidebar-border: #d4c9b8;
-  --sidebar-ring: #b87333;
+  --sidebar-accent: #faf6f0;
+  --sidebar-accent-foreground: #2a2f26;
+  --sidebar-border: #d4cdc0;
+  --sidebar-ring: #4a7c59;
 
   /* Record type colors — light mode */
-  --record-condition-bg: #fdf3e0;
-  --record-condition-text: #8a6d20;
-  --record-condition-dot: #c49332;
+  --record-condition-bg: #fdf6e3;
+  --record-condition-text: #7a6200;
+  --record-condition-dot: #b8860b;
   --record-observation-bg: #eef5eb;
   --record-observation-text: #3d6632;
-  --record-observation-dot: #5a7a50;
+  --record-observation-dot: #4a7c59;
   --record-medication-bg: #fde8e2;
   --record-medication-text: #8a4030;
   --record-medication-dot: #c47a5a;
   --record-encounter-bg: #e6f0ee;
   --record-encounter-text: #3a6a5a;
   --record-encounter-dot: #5a8c7a;
-  --record-immunization-bg: #fdf3e0;
-  --record-immunization-text: #8a6d20;
-  --record-immunization-dot: #d49a40;
+  --record-immunization-bg: #fdf6e3;
+  --record-immunization-text: #7a6200;
+  --record-immunization-dot: #b8960b;
   --record-procedure-bg: #e8eef4;
   --record-procedure-text: #3a5a6e;
   --record-procedure-dot: #5a7a8c;
@@ -130,16 +130,16 @@
   --record-document-dot: #8a7a6a;
   --record-allergy-bg: #fce4e0;
   --record-allergy-text: #8a3020;
-  --record-allergy-dot: #c45a3c;
+  --record-allergy-dot: #b54834;
   --record-imaging-bg: #f0e8f4;
   --record-imaging-text: #5a3a6a;
   --record-imaging-dot: #8a5a7a;
-  --record-diagnostic_report-bg: #fdf3e0;
-  --record-diagnostic_report-text: #7a6820;
-  --record-diagnostic_report-dot: #c4a040;
-  --record-service_request-bg: #fdf3e0;
-  --record-service_request-text: #8a6d20;
-  --record-service_request-dot: #d49a40;
+  --record-diagnostic_report-bg: #fdf6e3;
+  --record-diagnostic_report-text: #6a5800;
+  --record-diagnostic_report-dot: #b8960b;
+  --record-service_request-bg: #fdf6e3;
+  --record-service_request-text: #7a6200;
+  --record-service_request-dot: #b8960b;
   --record-communication-bg: #f0ece6;
   --record-communication-text: #5a5040;
   --record-communication-dot: #8a7a6a;
@@ -148,63 +148,63 @@
   --record-appointment-dot: #5a7a8c;
   --record-care_plan-bg: #eef5eb;
   --record-care_plan-text: #3d6632;
-  --record-care_plan-dot: #7a8c5a;
+  --record-care_plan-dot: #5a7a50;
   --record-default-bg: #f0ece6;
   --record-default-text: #5a5040;
   --record-default-dot: #8a7a6a;
 }
 
 .dark {
-  /* Retro palette tokens — dark mode */
-  --retro-bg-deep: #1a1610;
-  --retro-bg-surface: #241f18;
-  --retro-bg-card: #2e2820;
-  --retro-bg-card-hover: #3a3228;
-  --retro-text: #e8dcc8;
-  --retro-text-dim: #a09080;
-  --retro-text-muted: #706050;
-  --retro-amber: #d4924a;
-  --retro-amber-dim: #a07038;
+  /* Theme palette tokens — dark mode */
+  --retro-bg-deep: #1c2118;
+  --retro-bg-surface: #262f22;
+  --retro-bg-card: #2f3a2a;
+  --retro-bg-card-hover: #384432;
+  --retro-text: #e4dfd4;
+  --retro-text-dim: #a0a896;
+  --retro-text-muted: #8a9182;
+  --retro-amber: #6aa67a;
+  --retro-amber-dim: #558a62;
   --retro-terracotta: #d06040;
   --retro-sage: #7a9c60;
   --retro-ochre: #d4a843;
-  --retro-sienna: #b86a3a;
-  --retro-border: #3d3428;
-  --retro-border-active: #5a4a38;
-  --retro-glow-rgb: 212, 146, 74;
+  --retro-sienna: #c4a020;
+  --retro-border: #3a4436;
+  --retro-border-active: #4a5a42;
+  --retro-glow-rgb: 106, 166, 122;
 
   /* shadcn semantic tokens — dark mode */
-  --background: #1a1610;
-  --foreground: #e8dcc8;
-  --card: #2e2820;
-  --card-foreground: #e8dcc8;
-  --popover: #241f18;
-  --popover-foreground: #e8dcc8;
-  --primary: #d4924a;
-  --primary-foreground: #1a1610;
-  --secondary: #3a3228;
-  --secondary-foreground: #e8dcc8;
-  --muted: #241f18;
-  --muted-foreground: #a09080;
-  --accent: #3a3228;
-  --accent-foreground: #e8dcc8;
+  --background: #1c2118;
+  --foreground: #e4dfd4;
+  --card: #2f3a2a;
+  --card-foreground: #e4dfd4;
+  --popover: #262f22;
+  --popover-foreground: #e4dfd4;
+  --primary: #6aa67a;
+  --primary-foreground: #1c2118;
+  --secondary: #384432;
+  --secondary-foreground: #e4dfd4;
+  --muted: #262f22;
+  --muted-foreground: #a0a896;
+  --accent: #384432;
+  --accent-foreground: #e4dfd4;
   --destructive: #d06040;
-  --border: #3d3428;
-  --input: #3d3428;
-  --ring: #d4924a;
-  --chart-1: #d4924a;
-  --chart-2: #7a9c60;
-  --chart-3: #d4a843;
+  --border: #3a4436;
+  --input: #3a4436;
+  --ring: #6aa67a;
+  --chart-1: #6aa67a;
+  --chart-2: #d4a843;
+  --chart-3: #7a9c60;
   --chart-4: #d06040;
-  --chart-5: #b86a3a;
-  --sidebar: #241f18;
-  --sidebar-foreground: #e8dcc8;
-  --sidebar-primary: #d4924a;
-  --sidebar-primary-foreground: #1a1610;
-  --sidebar-accent: #3a3228;
-  --sidebar-accent-foreground: #e8dcc8;
-  --sidebar-border: #3d3428;
-  --sidebar-ring: #d4924a;
+  --chart-5: #c4a020;
+  --sidebar: #262f22;
+  --sidebar-foreground: #e4dfd4;
+  --sidebar-primary: #6aa67a;
+  --sidebar-primary-foreground: #1c2118;
+  --sidebar-accent: #384432;
+  --sidebar-accent-foreground: #e4dfd4;
+  --sidebar-border: #3a4436;
+  --sidebar-ring: #6aa67a;
 
   /* Record type colors — dark mode */
   --record-condition-bg: #3d2e14;
@@ -265,110 +265,35 @@
 }
 
 /* ============================================
-   CRT EFFECTS — theme-adaptive
+   WARM UTILITY CLASSES
    ============================================ */
 
-/* Phosphor glow on text */
-.crt-glow {
-  text-shadow: 0 0 8px rgba(var(--retro-glow-rgb), 0.3);
+/* Soft card shadow */
+.theme-shadow {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.crt-glow-strong {
-  text-shadow:
-    0 0 4px rgba(var(--retro-glow-rgb), 0.5),
-    0 0 12px rgba(var(--retro-glow-rgb), 0.2),
-    0 0 24px rgba(var(--retro-glow-rgb), 0.08);
+.theme-shadow-hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
 }
 
-/* Scanlines — theme-adaptive */
-.crt-scanlines {
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 1px,
-    rgba(0, 0, 0, 0.02) 1px,
-    rgba(0, 0, 0, 0.02) 2px
-  );
+/* Focus ring */
+.theme-focus-ring {
+  box-shadow: 0 0 0 2px var(--retro-bg-deep), 0 0 0 4px var(--retro-amber);
 }
 
-.dark .crt-scanlines {
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 1px,
-    rgba(0, 0, 0, 0.03) 1px,
-    rgba(0, 0, 0, 0.03) 2px
-  );
-}
-
-/* Vignette — theme-adaptive */
-.crt-vignette {
-  background: radial-gradient(
-    ellipse at center,
-    transparent 65%,
-    rgba(0, 0, 0, 0.15) 100%
-  );
-}
-
-.dark .crt-vignette {
-  background: radial-gradient(
-    ellipse at center,
-    transparent 60%,
-    rgba(0, 0, 0, 0.3) 100%
-  );
-}
-
-/* Glow utility classes */
-.retro-focus-glow {
-  box-shadow: 0 0 4px rgba(var(--retro-glow-rgb), 0.15);
-}
-
-.retro-hover-glow {
-  text-shadow: 0 0 8px rgba(var(--retro-glow-rgb), 0.3);
-}
-
-.retro-underline-glow {
-  box-shadow: 0 0 4px rgba(var(--retro-glow-rgb), 0.3);
-}
-
-/* Retro border variants */
-.retro-border {
+/* Border variants */
+.theme-border {
   border-color: var(--retro-border);
 }
 
-.retro-border-active {
+.theme-border-active {
   border-color: var(--retro-border-active);
 }
 
 /* ============================================
    ANIMATIONS
    ============================================ */
-
-@keyframes cursor-blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-@keyframes subtle-flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.97; }
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 8px rgba(var(--retro-glow-rgb), 0.3);
-  }
-  50% {
-    box-shadow: 0 0 16px rgba(var(--retro-glow-rgb), 0.5), 0 0 32px rgba(var(--retro-glow-rgb), 0.2);
-  }
-}
-
-@keyframes loading-dots {
-  0% { content: ''; }
-  25% { content: '.'; }
-  50% { content: '..'; }
-  75% { content: '...'; }
-}
 
 @keyframes fade-in-up {
   from {
@@ -379,6 +304,11 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes pulse-fade {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 /* Staggered children animation */
@@ -393,13 +323,6 @@
 .retro-stagger > *:nth-child(6) { animation-delay: 250ms; }
 .retro-stagger > *:nth-child(7) { animation-delay: 300ms; }
 .retro-stagger > *:nth-child(8) { animation-delay: 350ms; }
-
-/* Blinking cursor */
-.blink-cursor::after {
-  content: '\2588';
-  animation: cursor-blink 1s step-end infinite;
-  color: var(--retro-amber);
-}
 
 /* ============================================
    SCROLLBAR STYLING
