@@ -11,6 +11,7 @@ class UploadResponse(BaseModel):
     status: str
     records_inserted: int
     errors: list[Any] = []
+    unstructured_uploads: list[dict] = []
 
 
 class UploadStatusResponse(BaseModel):
@@ -60,11 +61,6 @@ class ExtractionResultResponse(BaseModel):
     extracted_text_preview: str | None = None
     entities: list[ExtractedEntitySchema] = []
     error: str | None = None
-
-
-class BatchUploadResponse(BaseModel):
-    uploads: list[UnstructuredUploadResponse]
-    total: int
 
 
 class BatchUploadResponse(BaseModel):

@@ -4,16 +4,25 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Upload, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
 
-const NAV_ITEMS = [
+interface NavItem {
+  label: string;
+  href: string;
+  icon?: LucideIcon;
+  separator?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { label: "Home", href: "/" },
   { label: "Timeline", href: "/timeline" },
-  { label: "Summaries", href: "/summaries" },
-  { label: "Admin", href: "/admin" },
+  { label: "Upload", href: "/upload", icon: Upload, separator: true },
+  { label: "Summarize", href: "/summaries", icon: Sparkles },
+  { label: "Admin", href: "/admin", separator: true },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -66,6 +75,7 @@ export function RetroNav() {
       <div className="flex items-center gap-1">
         {NAV_ITEMS.map((item) => {
           const active = isActive(pathname, item.href);
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
@@ -76,6 +86,16 @@ export function RetroNav() {
               style={{
                 color: active ? "var(--theme-amber)" : "var(--theme-text-dim)",
                 fontFamily: "var(--font-body)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.25rem",
+                ...(item.separator
+                  ? {
+                      borderLeft: "1px solid var(--theme-border)",
+                      marginLeft: "0.25rem",
+                      paddingLeft: "0.75rem",
+                    }
+                  : {}),
               }}
               onMouseEnter={(e) => {
                 if (!active) e.currentTarget.style.color = "var(--theme-text)";
@@ -84,6 +104,7 @@ export function RetroNav() {
                 if (!active) e.currentTarget.style.color = "var(--theme-text-dim)";
               }}
             >
+              {Icon && <Icon size={16} />}
               {item.label}
               {active && (
                 <span

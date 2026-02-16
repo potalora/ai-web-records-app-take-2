@@ -12,6 +12,7 @@ import { RetroButton } from "@/components/retro/RetroButton";
 import { RetroLoadingState } from "@/components/retro/RetroLoadingState";
 import { TerminalLog } from "@/components/retro/TerminalLog";
 import { RecordDetailSheet } from "@/components/retro/RecordDetailSheet";
+import { Upload } from "lucide-react";
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardOverview | null>(null);
@@ -65,6 +66,26 @@ export default function DashboardPage() {
         ]}
       />
 
+      {/* Upload records card */}
+      <RetroCard accentTop>
+        <RetroCardContent>
+          <div className="flex items-center gap-4">
+            <Upload size={24} style={{ color: "var(--theme-amber)", flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <p className="text-sm font-medium" style={{ color: "var(--theme-text)", fontFamily: "var(--font-body)" }}>
+                Upload records
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--theme-text-dim)", fontFamily: "var(--font-body)" }}>
+                Import FHIR bundles, Epic exports, or clinical documents
+              </p>
+            </div>
+            <Link href="/upload">
+              <RetroButton variant="ghost">Go to Upload →</RetroButton>
+            </Link>
+          </div>
+        </RetroCardContent>
+      </RetroCard>
+
       {/* Records by Category */}
       {Object.keys(overview.records_by_type).length > 0 && (
         <RetroCard>
@@ -110,7 +131,7 @@ export default function DashboardPage() {
               >
                 No records yet
               </p>
-              <Link href="/admin?tab=upload">
+              <Link href="/upload">
                 <RetroButton variant="ghost">Upload records</RetroButton>
               </Link>
             </div>

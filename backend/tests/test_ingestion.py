@@ -154,6 +154,295 @@ class TestFHIRParser:
         assert "observation" in types
 
 
+class TestEpicMappers:
+    """Unit tests for all Epic table mappers (no DB needed)."""
+
+    def test_allergy_mapper(self):
+        """AllergyMapper produces AllergyIntolerance."""
+        from app.services.ingestion.epic_mappers.allergies import AllergyMapper
+
+        mapper = AllergyMapper()
+        row = {
+            "ALLERGEN_ID_ALLERGEN_NAME": "Penicillin",
+            "REACTION": "Hives",
+            "DATE_NOTED": "3/15/2021 12:00:00 AM",
+            "SEVERITY_C_NAME": "Severe",
+            "ALRGY_STATUS_C_NAME": "Active",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "AllergyIntolerance"
+        assert result["code"]["text"] == "Penicillin"
+        assert result["reaction"][0]["manifestation"][0]["text"] == "Hives"
+        assert result["reaction"][0]["severity"] == "severe"
+        assert result["recordedDate"] is not None
+
+    def test_allergy_mapper_empty_allergen_returns_none(self):
+        """AllergyMapper returns None when allergen is empty."""
+        from app.services.ingestion.epic_mappers.allergies import AllergyMapper
+
+        mapper = AllergyMapper()
+        assert mapper.to_fhir({"ALLERGEN_ID_ALLERGEN_NAME": ""}) is None
+
+    def test_allergy_mapper_inactive_status(self):
+        """AllergyMapper maps inactive status correctly."""
+        from app.services.ingestion.epic_mappers.allergies import AllergyMapper
+
+        mapper = AllergyMapper()
+        row = {
+            "ALLERGEN_ID_ALLERGEN_NAME": "Aspirin",
+            "REACTION": "",
+            "DATE_NOTED": "",
+            "SEVERITY_C_NAME": "",
+            "ALRGY_STATUS_C_NAME": "Inactive",
+        }
+        result = mapper.to_fhir(row)
+        assert result["clinicalStatus"]["coding"][0]["code"] == "inactive"
+
+    def test_immune_mapper(self):
+        """ImmuneMapper produces Immunization."""
+        from app.services.ingestion.epic_mappers.immunizations import ImmuneMapper
+
+        mapper = ImmuneMapper()
+        row = {
+            "IMMUNZATN_ID_NAME": "COVID-19 Vaccine",
+            "IMMUNE_DATE": "1/15/2021 12:00:00 AM",
+            "DOSE": "0.3 mL",
+            "ROUTE_C_NAME": "Intramuscular",
+            "SITE_C_NAME": "Left Deltoid",
+            "MFG_C_NAME": "Pfizer",
+            "LOT": "EL9261",
+            "IMMNZTN_STATUS_C_NAME": "Administered",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "Immunization"
+        assert result["vaccineCode"]["text"] == "COVID-19 Vaccine"
+        assert result["status"] == "completed"
+        assert result["manufacturer"]["display"] == "Pfizer"
+        assert result["lotNumber"] == "EL9261"
+        assert result["route"]["text"] == "Intramuscular"
+
+    def test_immune_mapper_empty_name_returns_none(self):
+        """ImmuneMapper returns None when vaccine name is empty."""
+        from app.services.ingestion.epic_mappers.immunizations import ImmuneMapper
+
+        mapper = ImmuneMapper()
+        assert mapper.to_fhir({"IMMUNZATN_ID_NAME": ""}) is None
+
+    def test_order_proc_mapper(self):
+        """OrderProcMapper produces Procedure."""
+        from app.services.ingestion.epic_mappers.procedures import OrderProcMapper
+
+        mapper = OrderProcMapper()
+        row = {
+            "DESCRIPTION": "CT Abdomen with Contrast",
+            "ORDER_INST": "6/10/2023 12:00:00 AM",
+            "ORDER_STATUS_C_NAME": "Completed",
+            "AUTHRZING_PROV_ID_PROV_NAME": "Dr. Smith",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "Procedure"
+        assert result["code"]["text"] == "CT Abdomen with Contrast"
+        assert result["status"] == "completed"
+        assert result["performer"][0]["actor"]["display"] == "Dr. Smith"
+
+    def test_order_proc_mapper_pending_status(self):
+        """OrderProcMapper maps pending status correctly."""
+        from app.services.ingestion.epic_mappers.procedures import OrderProcMapper
+
+        mapper = OrderProcMapper()
+        row = {
+            "DESCRIPTION": "MRI Brain",
+            "ORDER_STATUS_C_NAME": "Pending",
+        }
+        result = mapper.to_fhir(row)
+        assert result["status"] == "preparation"
+
+    def test_vitals_mapper(self):
+        """VitalsMapper produces Observation with vital-signs category."""
+        from app.services.ingestion.epic_mappers.vitals import VitalsMapper
+
+        mapper = VitalsMapper()
+        row = {
+            "FLO_MEAS_NAME": "Blood Pressure Systolic",
+            "MEAS_VALUE": "120",
+            "UNITS": "mmHg",
+            "RECORDED_TIME": "2/15/2024 10:30:00 AM",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "Observation"
+        assert result["category"][0]["coding"][0]["code"] == "vital-signs"
+        assert result["valueQuantity"]["value"] == 120.0
+        assert result["valueQuantity"]["unit"] == "mmHg"
+
+    def test_vitals_mapper_string_value(self):
+        """VitalsMapper handles non-numeric values."""
+        from app.services.ingestion.epic_mappers.vitals import VitalsMapper
+
+        mapper = VitalsMapper()
+        row = {
+            "FLO_MEAS_NAME": "Pain Scale",
+            "MEAS_VALUE": "Moderate",
+            "UNITS": "",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["valueString"] == "Moderate"
+
+    def test_vitals_mapper_no_value_returns_none(self):
+        """VitalsMapper returns None when value is missing."""
+        from app.services.ingestion.epic_mappers.vitals import VitalsMapper
+
+        mapper = VitalsMapper()
+        assert mapper.to_fhir({"FLO_MEAS_NAME": "BP", "MEAS_VALUE": ""}) is None
+
+    def test_referral_mapper(self):
+        """ReferralMapper produces ServiceRequest."""
+        from app.services.ingestion.epic_mappers.referrals import ReferralMapper
+
+        mapper = ReferralMapper()
+        row = {
+            "REFERRING_PROV_ID_REFERRING_PROV_NAM": "Dr. Jones",
+            "REFERRAL_PROV_ID_PROV_NAME": "Dr. Specialist",
+            "RFL_STATUS_C_NAME": "Completed",
+            "RSN_FOR_RFL_C_NAME": "Cardiology Consultation",
+            "START_DATE": "3/1/2024 12:00:00 AM",
+            "EXP_DATE": "6/1/2024 12:00:00 AM",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "ServiceRequest"
+        assert result["code"]["text"] == "Cardiology Consultation"
+        assert result["status"] == "completed"
+        assert result["requester"]["display"] == "Dr. Jones"
+        assert result["performer"][0]["display"] == "Dr. Specialist"
+
+    def test_referral_mapper_no_reason_no_provider_returns_none(self):
+        """ReferralMapper returns None when both reason and provider are empty."""
+        from app.services.ingestion.epic_mappers.referrals import ReferralMapper
+
+        mapper = ReferralMapper()
+        assert mapper.to_fhir({
+            "RSN_FOR_RFL_C_NAME": "",
+            "REFERRAL_PROV_ID_PROV_NAME": "",
+        }) is None
+
+    def test_encounter_dx_mapper(self):
+        """EncounterDxMapper produces Condition with encounter-diagnosis category."""
+        from app.services.ingestion.epic_mappers.encounter_dx import EncounterDxMapper
+
+        mapper = EncounterDxMapper()
+        row = {
+            "DX_ID_DX_NAME": "Acute Bronchitis",
+            "CONTACT_DATE": "2/10/2024 12:00:00 AM",
+            "PRIMARY_DX_YN": "Y",
+            "ANNOTATION": "Follow-up in 2 weeks",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "Condition"
+        assert result["code"]["text"] == "Acute Bronchitis"
+        assert result["category"][0]["coding"][0]["code"] == "encounter-diagnosis"
+        assert result["_primaryDiagnosis"] is True
+        assert result["note"][0]["text"] == "Follow-up in 2 weeks"
+
+    def test_encounter_dx_mapper_empty_dx_returns_none(self):
+        """EncounterDxMapper returns None when dx name is empty."""
+        from app.services.ingestion.epic_mappers.encounter_dx import EncounterDxMapper
+
+        mapper = EncounterDxMapper()
+        assert mapper.to_fhir({"DX_ID_DX_NAME": ""}) is None
+
+    def test_social_hx_mapper(self):
+        """SocialHxMapper produces Observation with social-history category."""
+        from app.services.ingestion.epic_mappers.social_hx import SocialHxMapper
+
+        mapper = SocialHxMapper()
+        row = {
+            "SOCIAL_HX_TYPE_C_NAME": "Tobacco Use",
+            "SOCIAL_HX_COMMENT": "Former smoker, quit 2015",
+            "CONTACT_DATE": "1/5/2024 12:00:00 AM",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "Observation"
+        assert result["category"][0]["coding"][0]["code"] == "social-history"
+        assert result["code"]["text"] == "Tobacco Use"
+        assert result["valueString"] == "Former smoker, quit 2015"
+
+    def test_social_hx_mapper_empty_returns_none(self):
+        """SocialHxMapper returns None when all fields empty."""
+        from app.services.ingestion.epic_mappers.social_hx import SocialHxMapper
+
+        mapper = SocialHxMapper()
+        assert mapper.to_fhir({}) is None
+
+    def test_family_hx_mapper(self):
+        """FamilyHxMapper produces FamilyMemberHistory."""
+        from app.services.ingestion.epic_mappers.family_hx import FamilyHxMapper
+
+        mapper = FamilyHxMapper()
+        row = {
+            "FAM_MEDICAL_DX_ID_DX_NAME": "Type 2 Diabetes",
+            "RELATION_C_NAME": "Mother",
+            "AGE_OF_ONSET": "55",
+        }
+        result = mapper.to_fhir(row)
+        assert result is not None
+        assert result["resourceType"] == "FamilyMemberHistory"
+        assert result["relationship"]["text"] == "Mother"
+        assert result["condition"][0]["code"]["text"] == "Type 2 Diabetes"
+        assert result["condition"][0]["onsetAge"]["value"] == 55
+
+    def test_family_hx_mapper_empty_dx_returns_none(self):
+        """FamilyHxMapper returns None when dx name is empty."""
+        from app.services.ingestion.epic_mappers.family_hx import FamilyHxMapper
+
+        mapper = FamilyHxMapper()
+        assert mapper.to_fhir({"FAM_MEDICAL_DX_ID_DX_NAME": ""}) is None
+
+    def test_family_hx_mapper_non_numeric_onset(self):
+        """FamilyHxMapper handles non-numeric age of onset."""
+        from app.services.ingestion.epic_mappers.family_hx import FamilyHxMapper
+
+        mapper = FamilyHxMapper()
+        row = {
+            "FAM_MEDICAL_DX_ID_DX_NAME": "Heart Disease",
+            "RELATION_C_NAME": "Father",
+            "AGE_OF_ONSET": "childhood",
+        }
+        result = mapper.to_fhir(row)
+        assert result["condition"][0]["onsetString"] == "childhood"
+
+
+class TestEpicMapperRegistration:
+    """Verify all mappers are properly registered."""
+
+    def test_all_mappers_registered(self):
+        """All expected Epic table names have mappers."""
+        from app.services.ingestion.epic_parser import EPIC_TABLE_MAPPERS
+
+        expected_tables = {
+            "PROBLEM_LIST", "PROBLEM_LIST_ALL", "MEDICAL_HX",
+            "ORDER_MED", "ORDER_RESULTS", "PAT_ENC", "DOC_INFORMATION",
+            "ALLERGY", "IMMUNE", "ORDER_PROC", "IP_FLWSHT_MEAS",
+            "REFERRAL", "PAT_ENC_DX", "SOCIAL_HX", "FAMILY_HX",
+        }
+        assert expected_tables.issubset(set(EPIC_TABLE_MAPPERS.keys()))
+
+    def test_record_type_map_includes_new_types(self):
+        """RECORD_TYPE_MAP includes ServiceRequest and FamilyMemberHistory."""
+        from app.services.ingestion.epic_parser import RECORD_TYPE_MAP
+
+        assert "ServiceRequest" in RECORD_TYPE_MAP
+        assert RECORD_TYPE_MAP["ServiceRequest"] == "service_request"
+        assert "FamilyMemberHistory" in RECORD_TYPE_MAP
+        assert RECORD_TYPE_MAP["FamilyMemberHistory"] == "condition"
+
+
 class TestEpicFixtures:
     """Verify synthetic Epic TSV fixtures exist and have correct structure."""
 

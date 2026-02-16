@@ -2,49 +2,29 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useDropzone } from "react-dropzone";
+import { ChevronRight, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import type {
   RecordListResponse,
   HealthRecord,
-  LabItem,
-  UploadResponse,
   DedupCandidate,
   UserResponse,
   DashboardOverview,
-  UnstructuredUploadResponse,
-  ExtractionResult,
-  ExtractedEntity,
-  PatientInfo,
 } from "@/types/api";
 import { RECORD_TYPE_COLORS, RECORD_TYPE_LABELS, DEFAULT_RECORD_COLOR } from "@/lib/constants";
 import { GlowText } from "@/components/retro/GlowText";
 import { RetroTabs } from "@/components/retro/RetroTabs";
 import { RetroCard, RetroCardHeader, RetroCardContent } from "@/components/retro/RetroCard";
 import { RetroButton } from "@/components/retro/RetroButton";
-import { RetroInput } from "@/components/retro/RetroInput";
 import { RetroLoadingState } from "@/components/retro/RetroLoadingState";
 import { RetroBadge } from "@/components/retro/RetroBadge";
-import {
-  RetroTable,
-  RetroTableHeader,
-  RetroTableHead,
-  RetroTableBody,
-  RetroTableRow,
-  RetroTableCell,
-} from "@/components/retro/RetroTable";
 import { RecordDetailSheet } from "@/components/retro/RecordDetailSheet";
+import { ConfirmDialog } from "@/components/retro/ConfirmDialog";
 
 const TABS = [
-  { key: "all", label: "All" },
-  { key: "labs", label: "Labs" },
-  { key: "meds", label: "Meds" },
-  { key: "cond", label: "Conditions" },
-  { key: "enc", label: "Encounters" },
-  { key: "immun", label: "Immunizations" },
-  { key: "img", label: "Imaging" },
-  { key: "upload", label: "Upload" },
+  { key: "records", label: "Records" },
   { key: "dedup", label: "Dedup" },
   { key: "sys", label: "System" },
 ];
@@ -52,11 +32,11 @@ const TABS = [
 export default function AdminPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const initialTab = searchParams.get("tab") || "all";
+  const initialTab = searchParams.get("tab") || "records";
   const [activeTab, setActiveTab] = useState(initialTab);
 
   useEffect(() => {
-    const tab = searchParams.get("tab") || "all";
+    const tab = searchParams.get("tab") || "records";
     setActiveTab(tab);
   }, [searchParams]);
 
@@ -70,14 +50,7 @@ export default function AdminPage() {
       <GlowText as="h1">Admin Console</GlowText>
       <RetroTabs tabs={TABS} active={activeTab} onChange={handleTabChange} />
       <div className="mt-4">
-        {activeTab === "all" && <AllRecordsTab />}
-        {activeTab === "labs" && <LabsTab />}
-        {activeTab === "meds" && <RecordTypeTab recordType="medication" label="Medications" />}
-        {activeTab === "cond" && <RecordTypeTab recordType="condition" label="Conditions" />}
-        {activeTab === "enc" && <RecordTypeTab recordType="encounter" label="Encounters" />}
-        {activeTab === "immun" && <RecordTypeTab recordType="immunization" label="Immunizations" />}
-        {activeTab === "img" && <RecordTypeTab recordType="imaging" label="Imaging" />}
-        {activeTab === "upload" && <UploadTab />}
+        {activeTab === "records" && <RecordsTab />}
         {activeTab === "dedup" && <DedupTab />}
         {activeTab === "sys" && <SystemTab />}
       </div>
@@ -86,1006 +59,872 @@ export default function AdminPage() {
 }
 
 /* ==========================================
-   ALL RECORDS TAB
+   RECORDS TAB — Tree-based records view
    ========================================== */
 
-function AllRecordsTab() {
-  const [data, setData] = useState<RecordListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [recordType, setRecordType] = useState("");
+type ViewMode = "byType" | "byUpload";
+
+interface TreeNodeData {
+  key: string;
+  label: string;
+  count: number;
+  recordType?: string;
+  uploadId?: string;
+  uploadDate?: string;
+}
+
+function RecordsTab() {
+  const [viewMode, setViewMode] = useState<ViewMode>("byType");
   const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [dontAskChecked, setDontAskChecked] = useState(false);
 
-  useEffect(() => {
-    setLoading(true);
-    let endpoint = `/records?page=${page}&page_size=20`;
-    if (recordType) endpoint += `&record_type=${recordType}`;
-    if (search) endpoint += `&search=${encodeURIComponent(search)}`;
+  const { skipDeleteConfirm, setSkipDeleteConfirm } = usePreferencesStore();
 
-    api
-      .get<RecordListResponse>(endpoint)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [page, recordType, search]);
+  // Single delete state
+  const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
+  const [singleConfirmOpen, setSingleConfirmOpen] = useState(false);
+  const [singleDontAskChecked, setSingleDontAskChecked] = useState(false);
 
-  const totalPages = data ? Math.ceil(data.total / data.page_size) : 0;
+  // Refresh counter to trigger data re-fetches after deletes
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const triggerRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    setSelectedIds(new Set());
+  }, []);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSingleDelete = (id: string) => {
+    if (skipDeleteConfirm) {
+      performSingleDelete(id);
+    } else {
+      setSingleDeleteId(id);
+      setSingleDontAskChecked(false);
+      setSingleConfirmOpen(true);
+    }
+  };
+
+  const performSingleDelete = async (id: string) => {
+    try {
+      await api.delete(`/records/${id}`);
+      if (singleDontAskChecked) {
+        setSkipDeleteConfirm(true);
+      }
+      setSingleConfirmOpen(false);
+      setSingleDeleteId(null);
+      triggerRefresh();
+    } catch {
+      // silently fail
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (skipDeleteConfirm) {
+      performBulkDelete();
+    } else {
+      setDontAskChecked(false);
+      setBulkConfirmOpen(true);
+    }
+  };
+
+  const performBulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      const promises = Array.from(selectedIds).map((id) =>
+        api.delete(`/records/${id}`)
+      );
+      await Promise.all(promises);
+      if (dontAskChecked) {
+        setSkipDeleteConfirm(true);
+      }
+      setBulkConfirmOpen(false);
+      triggerRefresh();
+    } catch {
+      // silently fail
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex flex-1 gap-2">
-          <RetroInput
-            placeholder="Search records..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { setSearch(searchInput); setPage(1); }
+    <div style={{ position: "relative", minHeight: "200px" }}>
+      {/* View toggle */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginBottom: "16px",
+          gap: "0px",
+        }}
+      >
+        <RetroButton
+          variant="ghost"
+          onClick={() => setViewMode("byType")}
+          style={{
+            color: viewMode === "byType" ? "var(--theme-amber)" : "var(--theme-text-dim)",
+            borderBottom: viewMode === "byType" ? "2px solid var(--theme-amber)" : "2px solid transparent",
+            borderRadius: 0,
+            fontFamily: "var(--font-body)",
+            fontSize: "0.75rem",
+          }}
+        >
+          By Type
+        </RetroButton>
+        <RetroButton
+          variant="ghost"
+          onClick={() => setViewMode("byUpload")}
+          style={{
+            color: viewMode === "byUpload" ? "var(--theme-amber)" : "var(--theme-text-dim)",
+            borderBottom: viewMode === "byUpload" ? "2px solid var(--theme-amber)" : "2px solid transparent",
+            borderRadius: 0,
+            fontFamily: "var(--font-body)",
+            fontSize: "0.75rem",
+          }}
+        >
+          By Upload
+        </RetroButton>
+      </div>
+
+      {/* Tree content */}
+      {viewMode === "byType" ? (
+        <ByTypeTree
+          refreshKey={refreshKey}
+          selectedIds={selectedIds}
+          onToggleSelection={toggleSelection}
+          onDeleteRecord={handleSingleDelete}
+          onSelectRecord={setSelectedRecord}
+        />
+      ) : (
+        <ByUploadTree
+          refreshKey={refreshKey}
+          selectedIds={selectedIds}
+          onToggleSelection={toggleSelection}
+          onDeleteRecord={handleSingleDelete}
+          onSelectRecord={setSelectedRecord}
+        />
+      )}
+
+      {/* Floating bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "48px",
+            backgroundColor: "var(--theme-bg-surface)",
+            borderTop: "1px solid var(--theme-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "16px",
+            zIndex: 40,
+            padding: "0 24px",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "'VT323', monospace",
+              fontSize: "1rem",
+              color: "var(--theme-text)",
             }}
-          />
-          <RetroButton
-            variant="ghost"
-            onClick={() => { setSearch(searchInput); setPage(1); }}
           >
-            Search
+            {selectedIds.size} selected
+          </span>
+          <RetroButton variant="destructive" onClick={handleBulkDelete}>
+            Delete selected
           </RetroButton>
         </div>
-        <select
-          className="h-9 px-3 text-xs border"
-          style={{
-            backgroundColor: "var(--theme-bg-card)",
-            color: "var(--theme-text)",
-            borderColor: "var(--theme-border)",
-            borderRadius: "4px",
-          }}
-          value={recordType}
-          onChange={(e) => { setRecordType(e.target.value); setPage(1); }}
-        >
-          <option value="">ALL TYPES</option>
-          {Object.entries(RECORD_TYPE_LABELS).map(([val, label]) => (
-            <option key={val} value={val}>{label.toUpperCase()}</option>
-          ))}
-        </select>
-      </div>
-
-      {loading ? (
-        <RetroLoadingState text="Loading records" />
-      ) : !data || data.items.length === 0 ? (
-        <div className="py-12 text-center">
-          <p
-            className="text-sm"
-            style={{ color: "var(--theme-text-muted)" }}
-          >
-            No records found
-          </p>
-          {(search || recordType) && (
-            <button
-              onClick={() => { setSearch(""); setSearchInput(""); setRecordType(""); setPage(1); }}
-              className="mt-2 text-xs cursor-pointer font-medium"
-              style={{ color: "var(--theme-amber-dim)" }}
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      ) : (
-        <>
-          <RetroTable>
-            <RetroTableHeader>
-              <RetroTableHead>Type</RetroTableHead>
-              <RetroTableHead>Description</RetroTableHead>
-              <RetroTableHead>Date</RetroTableHead>
-              <RetroTableHead>Source</RetroTableHead>
-            </RetroTableHeader>
-            <RetroTableBody>
-              {data.items.map((record) => (
-                <RetroTableRow
-                  key={record.id}
-                  onClick={() => setSelectedRecord(record.id)}
-                >
-                  <RetroTableCell>
-                    <RetroBadge recordType={record.record_type} short />
-                  </RetroTableCell>
-                  <RetroTableCell className="max-w-md truncate">
-                    {record.display_text}
-                  </RetroTableCell>
-                  <RetroTableCell>
-                    <span style={{ color: "var(--theme-text-dim)" }}>
-                      {record.effective_date
-                        ? new Date(record.effective_date).toLocaleDateString()
-                        : "--"}
-                    </span>
-                  </RetroTableCell>
-                  <RetroTableCell>
-                    <span
-                      className="text-xs"
-                      style={{ color: "var(--theme-text-muted)" }}
-                    >
-                      {record.source_format}
-                    </span>
-                  </RetroTableCell>
-                </RetroTableRow>
-              ))}
-            </RetroTableBody>
-          </RetroTable>
-
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs"
-              style={{ color: "var(--theme-text-dim)" }}
-            >
-              {(data.page - 1) * data.page_size + 1}–
-              {Math.min(data.page * data.page_size, data.total)} of {data.total}
-            </span>
-            <div className="flex gap-2">
-              <RetroButton
-                variant="ghost"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Prev
-              </RetroButton>
-              <RetroButton
-                variant="ghost"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </RetroButton>
-            </div>
-          </div>
-        </>
       )}
 
+      {/* Record detail sheet */}
       <RecordDetailSheet
         recordId={selectedRecord}
         open={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
+        onDelete={triggerRefresh}
+      />
+
+      {/* Single delete confirm dialog */}
+      <ConfirmDialog
+        open={singleConfirmOpen}
+        title="Delete record?"
+        description="This record will be soft-deleted and can no longer be viewed."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+        onConfirm={() => {
+          if (singleDeleteId) performSingleDelete(singleDeleteId);
+        }}
+        onCancel={() => {
+          setSingleConfirmOpen(false);
+          setSingleDeleteId(null);
+        }}
+        showDontAskAgain
+        dontAskAgainChecked={singleDontAskChecked}
+        onDontAskAgainChange={setSingleDontAskChecked}
+      />
+
+      {/* Bulk delete confirm dialog */}
+      <ConfirmDialog
+        open={bulkConfirmOpen}
+        title={`Delete ${selectedIds.size} records?`}
+        description={`This will soft-delete ${selectedIds.size} selected records. This action cannot be easily undone.`}
+        confirmLabel="Delete all"
+        cancelLabel="Cancel"
+        variant="destructive"
+        onConfirm={performBulkDelete}
+        onCancel={() => setBulkConfirmOpen(false)}
+        showDontAskAgain
+        dontAskAgainChecked={dontAskChecked}
+        onDontAskAgainChange={setDontAskChecked}
       />
     </div>
   );
 }
 
-/* ==========================================
-   LABS TAB
-   ========================================== */
+/* ------------------------------------------
+   BY TYPE TREE
+   ------------------------------------------ */
 
-function interpretationStyle(interpretation: string): { color: string } {
-  const code = interpretation?.toUpperCase();
-  if (code === "H" || code === "HH") return { color: "var(--theme-terracotta)" };
-  if (code === "L" || code === "LL") return { color: "var(--record-procedure-text)" };
-  if (code === "A" || code === "AA") return { color: "var(--theme-ochre)" };
-  return { color: "var(--theme-text-dim)" };
-}
-
-function interpretationLabel(interpretation: string): string {
-  const code = interpretation?.toUpperCase();
-  if (code === "H") return "HIGH";
-  if (code === "HH") return "CRIT HIGH";
-  if (code === "L") return "LOW";
-  if (code === "LL") return "CRIT LOW";
-  if (code === "A") return "ABNORMAL";
-  if (code === "AA") return "CRIT ABNORM";
-  if (code === "N") return "NORMAL";
-  return interpretation || "--";
-}
-
-function LabsTab() {
-  const [labs, setLabs] = useState<LabItem[]>([]);
+function ByTypeTree({
+  refreshKey,
+  selectedIds,
+  onToggleSelection,
+  onDeleteRecord,
+  onSelectRecord,
+}: {
+  refreshKey: number;
+  selectedIds: Set<string>;
+  onToggleSelection: (id: string) => void;
+  onDeleteRecord: (id: string) => void;
+  onSelectRecord: (id: string) => void;
+}) {
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     setLoading(true);
     api
-      .get<{ items: LabItem[]; total: number; page: number; page_size: number }>(`/dashboard/labs?page=${page}&page_size=20`)
-      .then((data) => {
-        setLabs(data.items || []);
-        setTotal(data.total || 0);
-      })
-      .catch(() => { setLabs([]); setTotal(0); })
+      .get<DashboardOverview>("/dashboard/overview")
+      .then(setOverview)
+      .catch(() => setOverview(null))
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [refreshKey]);
 
-  if (loading) return <RetroLoadingState text="Loading lab results" />;
+  if (loading) return <RetroLoadingState text="Loading records" />;
 
-  if (labs.length === 0) {
+  if (!overview || Object.keys(overview.records_by_type).length === 0) {
     return (
-      <div className="py-12 text-center">
+      <div style={{ textAlign: "center", padding: "48px 0" }}>
         <p
-          className="text-sm"
-          style={{ color: "var(--theme-text-muted)" }}
+          style={{
+            fontSize: "0.875rem",
+            color: "var(--theme-text-muted)",
+          }}
         >
-          No lab results found
+          No records found
         </p>
       </div>
     );
   }
 
-  return (
-    <>
-      <RetroTable>
-        <RetroTableHeader>
-          <RetroTableHead>Test</RetroTableHead>
-          <RetroTableHead>Value</RetroTableHead>
-          <RetroTableHead>Ref range</RetroTableHead>
-          <RetroTableHead>Interp</RetroTableHead>
-          <RetroTableHead>Date</RetroTableHead>
-        </RetroTableHeader>
-        <RetroTableBody>
-          {labs.map((lab) => (
-            <RetroTableRow key={lab.id}>
-              <RetroTableCell>
-                <div>
-                  <p className="text-sm font-medium">{lab.display_text}</p>
-                  {lab.code_display && lab.code_display !== lab.display_text && (
-                    <p className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
-                      {lab.code_display}
-                    </p>
-                  )}
-                </div>
-              </RetroTableCell>
-              <RetroTableCell>
-                <span className="font-mono text-sm">
-                  {lab.value !== null && lab.value !== undefined ? String(lab.value) : "--"}
-                  {lab.unit && (
-                    <span className="ml-1" style={{ color: "var(--theme-text-muted)" }}>
-                      {lab.unit}
-                    </span>
-                  )}
-                </span>
-              </RetroTableCell>
-              <RetroTableCell>
-                <span style={{ color: "var(--theme-text-dim)" }}>
-                  {lab.reference_low !== null && lab.reference_high !== null
-                    ? `${lab.reference_low}–${lab.reference_high}`
-                    : lab.reference_low !== null
-                    ? `>= ${lab.reference_low}`
-                    : lab.reference_high !== null
-                    ? `<= ${lab.reference_high}`
-                    : "--"}
-                </span>
-              </RetroTableCell>
-              <RetroTableCell>
-                <span
-                  className="text-xs font-medium"
-                  style={interpretationStyle(lab.interpretation)}
-                >
-                  {interpretationLabel(lab.interpretation)}
-                </span>
-              </RetroTableCell>
-              <RetroTableCell>
-                <span style={{ color: "var(--theme-text-dim)" }}>
-                  {lab.effective_date
-                    ? new Date(lab.effective_date).toLocaleDateString()
-                    : "--"}
-                </span>
-              </RetroTableCell>
-            </RetroTableRow>
-          ))}
-        </RetroTableBody>
-      </RetroTable>
-
-      {total > 0 && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs" style={{ color: "var(--theme-text-dim)" }}>
-            {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total}
-          </span>
-          <div className="flex gap-2">
-            <RetroButton variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Prev
-            </RetroButton>
-            <RetroButton variant="ghost" disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </RetroButton>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ==========================================
-   GENERIC RECORD TYPE TAB
-   ========================================== */
-
-function statusColor(status: string | null): string {
-  if (!status) return "var(--theme-text-dim)";
-  const s = status.toLowerCase();
-  if (s === "active" || s === "in-progress") return "var(--theme-ochre)";
-  if (s === "completed" || s === "resolved" || s === "finished") return "var(--theme-sage)";
-  if (s === "stopped" || s === "cancelled" || s === "not-done") return "var(--theme-terracotta)";
-  return "var(--theme-text-dim)";
-}
-
-function RecordTypeTab({ recordType, label }: { recordType: string; label: string }) {
-  const [records, setRecords] = useState<HealthRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
-
-  useEffect(() => {
-    api
-      .get<RecordListResponse>(`/records?record_type=${recordType}&page_size=100`)
-      .then((data) => setRecords(data.items || []))
-      .catch(() => setRecords([]))
-      .finally(() => setLoading(false));
-  }, [recordType]);
-
-  if (loading) return <RetroLoadingState text={`Loading ${label.toLowerCase()}`} />;
-
-  if (records.length === 0) {
-    return (
-      <div className="py-12 text-center">
-        <p
-          className="text-sm"
-          style={{ color: "var(--theme-text-muted)" }}
-        >
-          No {label.toLowerCase()} found
-        </p>
-      </div>
-    );
-  }
+  const sortedTypes = Object.entries(overview.records_by_type)
+    .filter(([, count]) => count > 0)
+    .sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <>
-      <RetroTable>
-        <RetroTableHeader>
-          <RetroTableHead>Name</RetroTableHead>
-          <RetroTableHead>Status</RetroTableHead>
-          <RetroTableHead>Date</RetroTableHead>
-        </RetroTableHeader>
-        <RetroTableBody>
-          {records.map((record) => (
-            <RetroTableRow
-              key={record.id}
-              onClick={() => setSelectedRecord(record.id)}
-            >
-              <RetroTableCell className="max-w-lg truncate">
-                {record.display_text}
-              </RetroTableCell>
-              <RetroTableCell>
-                {record.status ? (
-                  <span
-                    className="text-xs font-medium"
-                    style={{ color: statusColor(record.status) }}
-                  >
-                    {record.status}
-                  </span>
-                ) : (
-                  <span style={{ color: "var(--theme-text-muted)" }}>--</span>
-                )}
-              </RetroTableCell>
-              <RetroTableCell>
-                <span style={{ color: "var(--theme-text-dim)" }}>
-                  {record.effective_date
-                    ? new Date(record.effective_date).toLocaleDateString()
-                    : "--"}
-                </span>
-              </RetroTableCell>
-            </RetroTableRow>
-          ))}
-        </RetroTableBody>
-      </RetroTable>
-
-      <RecordDetailSheet
-        recordId={selectedRecord}
-        open={!!selectedRecord}
-        onClose={() => setSelectedRecord(null)}
-      />
-    </>
-  );
-}
-
-/* ==========================================
-   UPLOAD TAB
-   ========================================== */
-
-function UploadTab() {
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<UploadResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
-  const [uploads, setUploads] = useState<Array<{
-    id: string;
-    original_filename: string;
-    ingestion_status: string;
-    records_inserted?: number;
-    created_at: string;
-    file_category?: string;
-  }>>([]);
-  const [uploadsLoading, setUploadsLoading] = useState(true);
-
-  useEffect(() => {
-    api
-      .get<{ items: Array<any>; total: number }>("/upload/history")
-      .then((data) => setUploads(data.items || []))
-      .catch(() => setUploads([]))
-      .finally(() => setUploadsLoading(false));
-  }, [result]);
-
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      setSelectedFile(acceptedFiles[0]);
-      setResult(null);
-      setError(null);
-    }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "application/json": [".json"],
-      "application/zip": [".zip"],
-      "application/x-zip-compressed": [".zip"],
-    },
-    maxFiles: 1,
-    multiple: false,
-  });
-
-  const handleUpload = async () => {
-    if (!selectedFile) return;
-    setUploading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      const response = await api.postForm<UploadResponse>("/upload", formData);
-      setResult(response);
-      setSelectedFile(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Drop zone */}
-      <div
-        {...getRootProps()}
-        className="border-2 border-dashed p-12 text-center cursor-pointer transition-colors"
-        style={{
-          borderColor: isDragActive ? "var(--theme-amber)" : "var(--theme-border)",
-          backgroundColor: isDragActive ? "var(--theme-bg-card-hover)" : "var(--theme-bg-card)",
-          borderRadius: "4px",
-        }}
-      >
-        <input {...getInputProps()} />
-        {isDragActive ? (
-          <p
-            className="text-sm font-medium"
-            style={{ color: "var(--theme-amber)" }}
-          >
-            Drop files here to upload
-          </p>
-        ) : (
-          <div className="space-y-2">
-            <p
-              className="text-sm"
-              style={{ color: "var(--theme-text-dim)" }}
-            >
-              Drop files here to upload
-            </p>
-            <p className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
-              JSON or ZIP files up to 500MB
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Selected file */}
-      {selectedFile && (
-        <RetroCard>
-          <RetroCardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium" style={{ color: "var(--theme-text)" }}>
-                  {selectedFile.name}
-                </p>
-                <p className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
-                  {(selectedFile.size / 1024).toFixed(1)} KB
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <RetroButton variant="ghost" onClick={() => setSelectedFile(null)}>
-                  Remove
-                </RetroButton>
-                <RetroButton onClick={handleUpload} disabled={uploading}>
-                  {uploading ? "Uploading..." : "Upload"}
-                </RetroButton>
-              </div>
-            </div>
-          </RetroCardContent>
-        </RetroCard>
-      )}
-
-      {/* Error */}
-      {error && (
-        <RetroCard>
-          <RetroCardContent>
-            <div className="flex items-start gap-3">
-              <span
-                className="text-xs font-bold shrink-0 px-2 py-0.5"
-                style={{
-                  backgroundColor: "var(--theme-terracotta)",
-                  color: "var(--theme-text)",
-                  borderRadius: "4px",
-                }}
-              >
-                ERROR
-              </span>
-              <p className="text-xs" style={{ color: "var(--theme-text-dim)" }}>{error}</p>
-            </div>
-          </RetroCardContent>
-        </RetroCard>
-      )}
-
-      {/* Result */}
-      {result && (
-        <RetroCard accentTop>
-          <RetroCardHeader>
-            <GlowText as="h4" glow={false}>Upload complete</GlowText>
-          </RetroCardHeader>
-          <RetroCardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between py-1">
-                <span className="text-xs" style={{ color: "var(--theme-text-dim)" }}>Status</span>
-                <span className="text-xs font-medium" style={{ color: "var(--theme-sage)" }}>
-                  {result.status}
-                </span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-xs" style={{ color: "var(--theme-text-dim)" }}>
-                  Records inserted
-                </span>
-                <span className="text-xs font-medium" style={{ color: "var(--theme-text)" }}>
-                  {result.records_inserted}
-                </span>
-              </div>
-              {Array.isArray(result.errors) && result.errors.length > 0 && (
-                <div className="pt-2">
-                  <p className="text-xs font-medium mb-2" style={{ color: "var(--theme-terracotta)" }}>
-                    Errors ({result.errors.length})
-                  </p>
-                  <div className="max-h-48 overflow-auto space-y-1">
-                    {result.errors.map((err, i) => (
-                      <p
-                        key={i}
-                        className="text-xs font-mono p-2"
-                        style={{
-                          backgroundColor: "var(--theme-bg-deep)",
-                          color: "var(--theme-text-dim)",
-                          borderRadius: "4px",
-                        }}
-                      >
-                        {typeof err === "string" ? err : JSON.stringify(err)}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </RetroCardContent>
-        </RetroCard>
-      )}
-
-      {/* Unstructured Upload Section */}
-      <UnstructuredUploadSection />
-
-      {/* Upload History */}
-      <div className="space-y-4 mt-8">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-px" style={{ backgroundColor: "var(--theme-border)" }} />
-          <span className="text-xs font-medium" style={{ color: "var(--theme-text-dim)" }}>
-            Upload history
-          </span>
-          <div className="flex-1 h-px" style={{ backgroundColor: "var(--theme-border)" }} />
-        </div>
-
-        {uploadsLoading ? (
-          <RetroLoadingState text="Loading upload history" />
-        ) : uploads.length === 0 ? (
-          <p className="text-xs text-center py-4" style={{ color: "var(--theme-text-muted)" }}>
-            No uploads yet
-          </p>
-        ) : (
-          <RetroTable>
-            <RetroTableHeader>
-              <RetroTableHead>Filename</RetroTableHead>
-              <RetroTableHead>Status</RetroTableHead>
-              <RetroTableHead>Records</RetroTableHead>
-              <RetroTableHead>Date</RetroTableHead>
-            </RetroTableHeader>
-            <RetroTableBody>
-              {uploads.map((upload) => (
-                <RetroTableRow key={upload.id}>
-                  <RetroTableCell className="max-w-xs truncate">
-                    {upload.original_filename}
-                  </RetroTableCell>
-                  <RetroTableCell>
-                    <span
-                      className="text-xs font-medium px-2 py-0.5"
-                      style={{
-                        borderRadius: "4px",
-                        backgroundColor:
-                          upload.ingestion_status === "completed" ? "var(--theme-sage)" :
-                          upload.ingestion_status === "processing" ? "var(--theme-amber)" :
-                          upload.ingestion_status === "failed" ? "var(--theme-terracotta)" :
-                          upload.ingestion_status === "awaiting_confirmation" ? "var(--record-procedure-text)" :
-                          "var(--theme-text-muted)",
-                        color: "var(--theme-bg-deep)",
-                      }}
-                    >
-                      {upload.ingestion_status}
-                    </span>
-                  </RetroTableCell>
-                  <RetroTableCell>
-                    <span style={{ color: "var(--theme-text-dim)" }}>
-                      {upload.records_inserted ?? "--"}
-                    </span>
-                  </RetroTableCell>
-                  <RetroTableCell>
-                    <span style={{ color: "var(--theme-text-dim)" }}>
-                      {upload.created_at
-                        ? new Date(upload.created_at).toLocaleDateString()
-                        : "--"}
-                    </span>
-                  </RetroTableCell>
-                </RetroTableRow>
-              ))}
-            </RetroTableBody>
-          </RetroTable>
-        )}
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+      {sortedTypes.map(([recordType, count]) => (
+        <TypeTreeNode
+          key={recordType}
+          recordType={recordType}
+          count={count}
+          refreshKey={refreshKey}
+          selectedIds={selectedIds}
+          onToggleSelection={onToggleSelection}
+          onDeleteRecord={onDeleteRecord}
+          onSelectRecord={onSelectRecord}
+        />
+      ))}
     </div>
   );
 }
 
-/* ==========================================
-   UNSTRUCTURED UPLOAD SECTION
-   ========================================== */
+function TypeTreeNode({
+  recordType,
+  count,
+  refreshKey,
+  selectedIds,
+  onToggleSelection,
+  onDeleteRecord,
+  onSelectRecord,
+}: {
+  recordType: string;
+  count: number;
+  refreshKey: number;
+  selectedIds: Set<string>;
+  onToggleSelection: (id: string) => void;
+  onDeleteRecord: (id: string) => void;
+  onSelectRecord: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [records, setRecords] = useState<HealthRecord[]>([]);
+  const [loadingRecords, setLoadingRecords] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 25;
 
-function UnstructuredUploadSection() {
-  const [unstrFile, setUnstrFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadId, setUploadId] = useState<string | null>(null);
-  const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
-  const [pollInterval, setPollInterval] = useState<ReturnType<typeof setInterval> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedEntities, setSelectedEntities] = useState<Set<number>>(new Set());
-  const [patients, setPatients] = useState<PatientInfo[]>([]);
-  const [selectedPatient, setSelectedPatient] = useState("");
-  const [confirming, setConfirming] = useState(false);
-  const [confirmResult, setConfirmResult] = useState<{records_created: number} | null>(null);
+  const colors = RECORD_TYPE_COLORS[recordType] || DEFAULT_RECORD_COLOR;
+  const label = RECORD_TYPE_LABELS[recordType] || recordType;
 
-  const onDropUnstr = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      setUnstrFile(acceptedFiles[0]);
-      setExtraction(null);
-      setUploadId(null);
-      setError(null);
-      setConfirmResult(null);
-    }
-  }, []);
-
-  const { getRootProps: getUnstrRootProps, getInputProps: getUnstrInputProps, isDragActive: isUnstrDragActive } = useDropzone({
-    onDrop: onDropUnstr,
-    accept: {
-      "application/pdf": [".pdf"],
-      "application/rtf": [".rtf"],
-      "text/rtf": [".rtf"],
-      "image/tiff": [".tif", ".tiff"],
-    },
-    maxFiles: 1,
-    multiple: false,
-  });
-
-  // Load patients for selector
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.get<{ items: PatientInfo[] }>("/dashboard/patients");
-        setPatients(data.items);
-        if (data.items.length > 0) setSelectedPatient(data.items[0].id);
-      } catch { /* ignore */ }
-    })();
-  }, []);
+    if (!expanded) return;
+    setLoadingRecords(true);
+    api
+      .get<RecordListResponse>(
+        `/records?record_type=${recordType}&page=${page}&page_size=${pageSize}`
+      )
+      .then((data) => {
+        setRecords(data.items || []);
+        setTotal(data.total || 0);
+      })
+      .catch(() => {
+        setRecords([]);
+        setTotal(0);
+      })
+      .finally(() => setLoadingRecords(false));
+  }, [expanded, page, recordType, refreshKey]);
 
-  // Poll for extraction results
-  useEffect(() => {
-    if (!uploadId) return;
-
-    const poll = setInterval(async () => {
-      try {
-        const data = await api.get<ExtractionResult>(`/upload/${uploadId}/extraction`);
-        setExtraction(data);
-
-        if (data.status === "awaiting_confirmation" || data.status === "completed" || data.status === "failed") {
-          clearInterval(poll);
-          setPollInterval(null);
-          if (data.entities.length > 0) {
-            setSelectedEntities(new Set(data.entities.map((_, i) => i)));
-          }
-          if (data.error) {
-            setError(data.error);
-          }
-        }
-      } catch {
-        clearInterval(poll);
-        setPollInterval(null);
-      }
-    }, 2000);
-
-    setPollInterval(poll);
-    return () => clearInterval(poll);
-  }, [uploadId]);
-
-  const handleUnstrUpload = async () => {
-    if (!unstrFile) return;
-    setUploading(true);
-    setError(null);
-    setExtraction(null);
-    setConfirmResult(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", unstrFile);
-      const resp = await api.postForm<UnstructuredUploadResponse>("/upload/unstructured", formData);
-      setUploadId(resp.upload_id);
-      setUnstrFile(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
+  const handleToggle = () => {
+    if (!expanded) {
+      setPage(1);
     }
+    setExpanded(!expanded);
   };
 
-  const toggleEntity = (index: number) => {
-    const next = new Set(selectedEntities);
-    if (next.has(index)) next.delete(index);
-    else next.add(index);
-    setSelectedEntities(next);
-  };
-
-  const handleConfirm = async () => {
-    if (!extraction || !selectedPatient) return;
-    setConfirming(true);
-    setError(null);
-
-    try {
-      const confirmed = extraction.entities
-        .filter((_, i) => selectedEntities.has(i))
-        .map(e => ({
-          entity_class: e.entity_class,
-          text: e.text,
-          attributes: e.attributes,
-          start_pos: e.start_pos,
-          end_pos: e.end_pos,
-          confidence: e.confidence,
-        }));
-
-      const resp = await api.post<{records_created: number}>(`/upload/${uploadId}/confirm-extraction`, {
-        confirmed_entities: confirmed,
-        patient_id: selectedPatient,
-      });
-      setConfirmResult(resp);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Confirmation failed");
-    } finally {
-      setConfirming(false);
-    }
-  };
-
-  const ENTITY_COLORS: Record<string, string> = {
-    medication: "var(--theme-amber)",
-    condition: "var(--theme-ochre)",
-    lab_result: "var(--theme-sage)",
-    vital: "var(--theme-sage)",
-    procedure: "var(--record-procedure-text)",
-    allergy: "var(--theme-terracotta)",
-    provider: "var(--theme-text-dim)",
-    dosage: "var(--theme-text-muted)",
-    route: "var(--theme-text-muted)",
-    frequency: "var(--theme-text-muted)",
-    duration: "var(--theme-text-muted)",
-  };
+  const hasMore = page * pageSize < total;
 
   return (
-    <div className="space-y-4 mt-8">
-      <div className="flex items-center gap-2">
-        <div className="flex-1 h-px" style={{ backgroundColor: "var(--theme-border)" }} />
-        <span className="text-xs font-medium" style={{ color: "var(--theme-text-dim)" }}>
-          Unstructured document upload
-        </span>
-        <div className="flex-1 h-px" style={{ backgroundColor: "var(--theme-border)" }} />
-      </div>
-
-      {/* Dropzone for unstructured files */}
+    <div>
+      {/* Group header row */}
       <div
-        {...getUnstrRootProps()}
-        className="border-2 border-dashed p-8 text-center cursor-pointer transition-colors"
+        onClick={handleToggle}
         style={{
-          borderColor: isUnstrDragActive ? "var(--theme-amber)" : "var(--theme-border)",
-          backgroundColor: isUnstrDragActive ? "var(--theme-bg-card-hover)" : "var(--theme-bg-card)",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "8px 12px",
+          cursor: "pointer",
+          transition: "background-color 150ms",
           borderRadius: "4px",
         }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--theme-bg-card-hover)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+        }}
       >
-        <input {...getUnstrInputProps()} />
-        <div className="space-y-2">
-          <p className="text-sm" style={{ color: "var(--theme-text-dim)" }}>
-            Drop PDF, RTF, or TIFF for AI extraction
-          </p>
-          <p className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
-            Clinical notes, scanned documents, reports
-          </p>
-        </div>
+        <ChevronRight
+          size={16}
+          style={{
+            color: "var(--theme-amber)",
+            transition: "transform 200ms",
+            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+            flexShrink: 0,
+          }}
+        />
+        {/* Color dot */}
+        <span
+          style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            backgroundColor: colors.dot,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontFamily: "var(--font-body)",
+            fontSize: "0.8125rem",
+            color: "var(--theme-text)",
+            flex: 1,
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontFamily: "'VT323', monospace",
+            fontSize: "0.875rem",
+            color: "var(--theme-text-muted)",
+          }}
+        >
+          {count}
+        </span>
       </div>
 
-      {/* Selected unstructured file */}
-      {unstrFile && (
-        <RetroCard>
-          <RetroCardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium" style={{ color: "var(--theme-text)" }}>{unstrFile.name}</p>
-                <p className="text-xs" style={{ color: "var(--theme-text-muted)" }}>{(unstrFile.size / 1024).toFixed(1)} KB</p>
-              </div>
-              <div className="flex gap-2">
-                <RetroButton variant="ghost" onClick={() => setUnstrFile(null)}>Remove</RetroButton>
-                <RetroButton onClick={handleUnstrUpload} disabled={uploading}>
-                  {uploading ? "Uploading..." : "Extract"}
-                </RetroButton>
-              </div>
+      {/* Expanded children */}
+      {expanded && (
+        <div
+          style={{
+            overflow: "hidden",
+            transition: "max-height 300ms ease-in-out",
+            paddingLeft: "36px",
+          }}
+        >
+          {loadingRecords ? (
+            <div style={{ padding: "12px 0" }}>
+              <RetroLoadingState text="Loading" />
             </div>
-          </RetroCardContent>
-        </RetroCard>
-      )}
-
-      {/* Processing state */}
-      {extraction && extraction.status === "processing" && (
-        <RetroCard>
-          <RetroCardContent>
-            <div className="flex items-center gap-3">
-              <span className="text-sm animate-pulse" style={{ color: "var(--theme-amber)" }}>
-                Extracting text and entities
+          ) : records.length === 0 ? (
+            <div style={{ padding: "12px 0" }}>
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--theme-text-muted)",
+                }}
+              >
+                No records
               </span>
             </div>
-          </RetroCardContent>
-        </RetroCard>
+          ) : (
+            <>
+              {records.map((record) => (
+                <RecordLeafNode
+                  key={record.id}
+                  record={record}
+                  isSelected={selectedIds.has(record.id)}
+                  onToggleSelection={() => onToggleSelection(record.id)}
+                  onDelete={() => onDeleteRecord(record.id)}
+                  onSelect={() => onSelectRecord(record.id)}
+                />
+              ))}
+              {hasMore && (
+                <div style={{ padding: "8px 12px" }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPage((p) => p + 1);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "0.75rem",
+                      fontFamily: "var(--font-body)",
+                      color: "var(--theme-amber)",
+                      padding: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.textDecoration = "underline";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.textDecoration = "none";
+                    }}
+                  >
+                    Load more ({total - page * pageSize} remaining)
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
+    </div>
+  );
+}
 
-      {/* Error */}
-      {error && (
-        <RetroCard>
-          <RetroCardContent>
-            <div className="flex items-start gap-3">
-              <span className="text-xs font-bold shrink-0 px-2 py-0.5" style={{ backgroundColor: "var(--theme-terracotta)", color: "var(--theme-text)", borderRadius: "4px" }}>
-                ERROR
+/* ------------------------------------------
+   BY UPLOAD TREE
+   ------------------------------------------ */
+
+interface UploadHistoryItem {
+  id: string;
+  original_filename: string;
+  ingestion_status: string;
+  records_inserted?: number;
+  created_at: string;
+  file_category?: string;
+}
+
+function ByUploadTree({
+  refreshKey,
+  selectedIds,
+  onToggleSelection,
+  onDeleteRecord,
+  onSelectRecord,
+}: {
+  refreshKey: number;
+  selectedIds: Set<string>;
+  onToggleSelection: (id: string) => void;
+  onDeleteRecord: (id: string) => void;
+  onSelectRecord: (id: string) => void;
+}) {
+  const [uploads, setUploads] = useState<UploadHistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .get<{ items: UploadHistoryItem[]; total: number }>("/upload/history")
+      .then((data) => setUploads(data.items || []))
+      .catch(() => setUploads([]))
+      .finally(() => setLoading(false));
+  }, [refreshKey]);
+
+  if (loading) return <RetroLoadingState text="Loading uploads" />;
+
+  if (uploads.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0" }}>
+        <p
+          style={{
+            fontSize: "0.875rem",
+            color: "var(--theme-text-muted)",
+          }}
+        >
+          No uploads found
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+      {uploads.map((upload) => (
+        <UploadTreeNode
+          key={upload.id}
+          upload={upload}
+          refreshKey={refreshKey}
+          selectedIds={selectedIds}
+          onToggleSelection={onToggleSelection}
+          onDeleteRecord={onDeleteRecord}
+          onSelectRecord={onSelectRecord}
+        />
+      ))}
+    </div>
+  );
+}
+
+function UploadTreeNode({
+  upload,
+  refreshKey,
+  selectedIds,
+  onToggleSelection,
+  onDeleteRecord,
+  onSelectRecord,
+}: {
+  upload: UploadHistoryItem;
+  refreshKey: number;
+  selectedIds: Set<string>;
+  onToggleSelection: (id: string) => void;
+  onDeleteRecord: (id: string) => void;
+  onSelectRecord: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [records, setRecords] = useState<HealthRecord[]>([]);
+  const [loadingRecords, setLoadingRecords] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 25;
+
+  useEffect(() => {
+    if (!expanded) return;
+    setLoadingRecords(true);
+    api
+      .get<RecordListResponse>(
+        `/records?source_upload_id=${upload.id}&page=${page}&page_size=${pageSize}`
+      )
+      .then((data) => {
+        setRecords(data.items || []);
+        setTotal(data.total || 0);
+      })
+      .catch(() => {
+        setRecords([]);
+        setTotal(0);
+      })
+      .finally(() => setLoadingRecords(false));
+  }, [expanded, page, upload.id, refreshKey]);
+
+  const handleToggle = () => {
+    if (!expanded) {
+      setPage(1);
+    }
+    setExpanded(!expanded);
+  };
+
+  const hasMore = page * pageSize < total;
+  const uploadDate = upload.created_at
+    ? new Date(upload.created_at).toLocaleDateString()
+    : "--";
+  const recordCount = upload.records_inserted ?? 0;
+
+  return (
+    <div>
+      {/* Upload header row */}
+      <div
+        onClick={handleToggle}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "8px 12px",
+          cursor: "pointer",
+          transition: "background-color 150ms",
+          borderRadius: "4px",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--theme-bg-card-hover)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+        }}
+      >
+        <ChevronRight
+          size={16}
+          style={{
+            color: "var(--theme-amber)",
+            transition: "transform 200ms",
+            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span
+            style={{
+              fontFamily: "var(--font-body)",
+              fontSize: "0.8125rem",
+              color: "var(--theme-text)",
+              display: "block",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {upload.original_filename}
+          </span>
+          <span
+            style={{
+              fontFamily: "var(--font-body)",
+              fontSize: "0.6875rem",
+              color: "var(--theme-text-muted)",
+            }}
+          >
+            {uploadDate}
+          </span>
+        </div>
+        <span
+          style={{
+            fontFamily: "'VT323', monospace",
+            fontSize: "0.875rem",
+            color: "var(--theme-text-muted)",
+            flexShrink: 0,
+          }}
+        >
+          {recordCount}
+        </span>
+      </div>
+
+      {/* Expanded children */}
+      {expanded && (
+        <div
+          style={{
+            overflow: "hidden",
+            transition: "max-height 300ms ease-in-out",
+            paddingLeft: "36px",
+          }}
+        >
+          {loadingRecords ? (
+            <div style={{ padding: "12px 0" }}>
+              <RetroLoadingState text="Loading" />
+            </div>
+          ) : records.length === 0 ? (
+            <div style={{ padding: "12px 0" }}>
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--theme-text-muted)",
+                }}
+              >
+                No records from this upload
               </span>
-              <p className="text-xs" style={{ color: "var(--theme-text-dim)" }}>{error}</p>
             </div>
-          </RetroCardContent>
-        </RetroCard>
+          ) : (
+            <>
+              {records.map((record) => (
+                <RecordLeafNode
+                  key={record.id}
+                  record={record}
+                  isSelected={selectedIds.has(record.id)}
+                  onToggleSelection={() => onToggleSelection(record.id)}
+                  onDelete={() => onDeleteRecord(record.id)}
+                  onSelect={() => onSelectRecord(record.id)}
+                />
+              ))}
+              {hasMore && (
+                <div style={{ padding: "8px 12px" }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPage((p) => p + 1);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "0.75rem",
+                      fontFamily: "var(--font-body)",
+                      color: "var(--theme-amber)",
+                      padding: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.textDecoration = "underline";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.textDecoration = "none";
+                    }}
+                  >
+                    Load more ({total - page * pageSize} remaining)
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
+    </div>
+  );
+}
 
-      {/* Confirm result */}
-      {confirmResult && (
-        <RetroCard accentTop>
-          <RetroCardHeader>
-            <GlowText as="h4" glow={false}>Extraction confirmed</GlowText>
-          </RetroCardHeader>
-          <RetroCardContent>
-            <p className="text-sm" style={{ color: "var(--theme-sage)" }}>
-              {confirmResult.records_created} health records created. View in ALL tab.
-            </p>
-          </RetroCardContent>
-        </RetroCard>
-      )}
+/* ------------------------------------------
+   RECORD LEAF NODE (shared by both tree views)
+   ------------------------------------------ */
 
-      {/* Entity Review Panel */}
-      {extraction && extraction.status === "awaiting_confirmation" && extraction.entities.length > 0 && !confirmResult && (
-        <RetroCard accentTop>
-          <RetroCardHeader>
-            <div className="flex items-center justify-between">
-              <GlowText as="h4" glow={false}>Review extracted entities</GlowText>
-              <span className="text-xs" style={{ color: "var(--theme-text-dim)" }}>
-                {extraction.entities.length} entities found
-              </span>
-            </div>
-          </RetroCardHeader>
-          <RetroCardContent>
-            <div className="space-y-4">
-              {/* Patient selector */}
-              <div>
-                <label className="text-xs font-medium block mb-2" style={{ color: "var(--theme-text-dim)", fontFamily: "var(--font-body)" }}>
-                  Assign to patient
-                </label>
-                <select
-                  value={selectedPatient}
-                  onChange={(e) => setSelectedPatient(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border"
-                  style={{
-                    backgroundColor: "var(--theme-bg-deep)",
-                    borderColor: "var(--theme-border)",
-                    color: "var(--theme-text)",
-                    fontFamily: "var(--font-mono)",
-                    borderRadius: "4px",
-                  }}
-                >
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.id}>{p.fhir_id || p.id.slice(0, 8)} ({p.gender || "unknown"})</option>
-                  ))}
-                </select>
-              </div>
+function RecordLeafNode({
+  record,
+  isSelected,
+  onToggleSelection,
+  onDelete,
+  onSelect,
+}: {
+  record: HealthRecord;
+  isSelected: boolean;
+  onToggleSelection: () => void;
+  onDelete: () => void;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "6px 12px",
+        transition: "background-color 150ms",
+        borderRadius: "4px",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = "var(--theme-bg-card-hover)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = "transparent";
+      }}
+    >
+      {/* Checkbox */}
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={(e) => {
+          e.stopPropagation();
+          onToggleSelection();
+        }}
+        style={{
+          accentColor: "var(--theme-amber)",
+          cursor: "pointer",
+          flexShrink: 0,
+        }}
+      />
 
-              {/* Entity table */}
-              <div className="overflow-auto max-h-96">
-                <RetroTable>
-                  <RetroTableHeader>
-                    <RetroTableRow>
-                      <RetroTableHead className="w-10">{" "}</RetroTableHead>
-                      <RetroTableHead>TYPE</RetroTableHead>
-                      <RetroTableHead>TEXT</RetroTableHead>
-                      <RetroTableHead>DETAILS</RetroTableHead>
-                      <RetroTableHead className="w-16">CONF</RetroTableHead>
-                    </RetroTableRow>
-                  </RetroTableHeader>
-                  <RetroTableBody>
-                    {extraction.entities.map((entity, i) => (
-                      <RetroTableRow key={i}>
-                        <RetroTableCell>
-                          <input
-                            type="checkbox"
-                            checked={selectedEntities.has(i)}
-                            onChange={() => toggleEntity(i)}
-                            className="accent-amber-500"
-                          />
-                        </RetroTableCell>
-                        <RetroTableCell>
-                          <span className="text-xs font-semibold" style={{ color: ENTITY_COLORS[entity.entity_class] || "var(--theme-text-dim)" }}>
-                            {entity.entity_class.replace("_", " ")}
-                          </span>
-                        </RetroTableCell>
-                        <RetroTableCell>
-                          <span className="text-xs" style={{ color: "var(--theme-text)" }}>{entity.text}</span>
-                        </RetroTableCell>
-                        <RetroTableCell>
-                          <span className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
-                            {Object.entries(entity.attributes)
-                              .filter(([k]) => k !== "medication_group")
-                              .map(([k, v]) => `${k}: ${v}`)
-                              .join(", ")
-                              .slice(0, 60)}
-                          </span>
-                        </RetroTableCell>
-                        <RetroTableCell>
-                          <span className="text-xs" style={{ color: entity.confidence >= 0.8 ? "var(--theme-sage)" : "var(--theme-ochre)" }}>
-                            {(entity.confidence * 100).toFixed(0)}%
-                          </span>
-                        </RetroTableCell>
-                      </RetroTableRow>
-                    ))}
-                  </RetroTableBody>
-                </RetroTable>
-              </div>
+      {/* Record text — clickable to open detail sheet */}
+      <span
+        onClick={onSelect}
+        style={{
+          flex: 1,
+          fontFamily: "var(--font-body)",
+          fontSize: "0.75rem",
+          color: "var(--theme-text)",
+          cursor: "pointer",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "var(--theme-amber)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--theme-text)";
+        }}
+      >
+        {record.display_text}
+      </span>
 
-              {/* Confirm button */}
-              <div className="flex justify-end">
-                <RetroButton onClick={handleConfirm} disabled={confirming || selectedEntities.size === 0}>
-                  {confirming ? "Saving..." : `Confirm ${selectedEntities.size} entities`}
-                </RetroButton>
-              </div>
-            </div>
-          </RetroCardContent>
-        </RetroCard>
-      )}
+      {/* Date */}
+      <span
+        style={{
+          fontFamily: "var(--font-body)",
+          fontSize: "0.6875rem",
+          color: "var(--theme-text-muted)",
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {record.effective_date
+          ? new Date(record.effective_date).toLocaleDateString()
+          : "--"}
+      </span>
+
+      {/* Trash icon */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: "2px",
+          display: "flex",
+          alignItems: "center",
+          color: "var(--theme-text-muted)",
+          flexShrink: 0,
+          transition: "color 150ms",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "var(--theme-terracotta)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--theme-text-muted)";
+        }}
+      >
+        <Trash2 size={14} />
+      </button>
     </div>
   );
 }
@@ -1093,6 +932,8 @@ function UnstructuredUploadSection() {
 /* ==========================================
    DEDUP TAB
    ========================================== */
+
+// TODO: Improve dedup UX — current detection works but resolution UI needs redesign
 
 function DedupTab() {
   const [candidates, setCandidates] = useState<DedupCandidate[]>([]);
@@ -1326,6 +1167,35 @@ function DedupRecordCard({
 /* ==========================================
    SYSTEM TAB
    ========================================== */
+
+function interpretationStyle(interpretation: string): { color: string } {
+  const code = interpretation?.toUpperCase();
+  if (code === "H" || code === "HH") return { color: "var(--theme-terracotta)" };
+  if (code === "L" || code === "LL") return { color: "var(--record-procedure-text)" };
+  if (code === "A" || code === "AA") return { color: "var(--theme-ochre)" };
+  return { color: "var(--theme-text-dim)" };
+}
+
+function interpretationLabel(interpretation: string): string {
+  const code = interpretation?.toUpperCase();
+  if (code === "H") return "HIGH";
+  if (code === "HH") return "CRIT HIGH";
+  if (code === "L") return "LOW";
+  if (code === "LL") return "CRIT LOW";
+  if (code === "A") return "ABNORMAL";
+  if (code === "AA") return "CRIT ABNORM";
+  if (code === "N") return "NORMAL";
+  return interpretation || "--";
+}
+
+function statusColor(status: string | null): string {
+  if (!status) return "var(--theme-text-dim)";
+  const s = status.toLowerCase();
+  if (s === "active" || s === "in-progress") return "var(--theme-ochre)";
+  if (s === "completed" || s === "resolved" || s === "finished") return "var(--theme-sage)";
+  if (s === "stopped" || s === "cancelled" || s === "not-done") return "var(--theme-terracotta)";
+  return "var(--theme-text-dim)";
+}
 
 function SystemTab() {
   const [user, setUser] = useState<UserResponse | null>(null);

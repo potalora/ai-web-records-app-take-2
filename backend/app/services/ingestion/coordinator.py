@@ -125,6 +125,7 @@ async def ingest_file(
             "status": "completed",
             "records_inserted": stats.get("records_inserted", 0),
             "errors": stats.get("errors", []),
+            "unstructured_uploads": stats.get("unstructured_files", []),
         }
 
     except Exception as e:
@@ -189,7 +190,7 @@ async def _ingest_zip(
     upload_id: UUID,
     zip_path: Path,
 ) -> dict:
-    """Extract and ingest a ZIP file."""
+    """Extract and ingest a ZIP file with mixed content support."""
     temp_dir = Path(settings.temp_extract_dir) / str(upload_id)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -197,25 +198,103 @@ async def _ingest_zip(
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(temp_dir)
 
-        # Check if extracted content is FHIR or Epic
-        json_files = list(temp_dir.rglob("*.json"))
-        tsv_files = list(temp_dir.rglob("*.tsv"))
+        # Collect all files, excluding schema dirs and readme
+        all_files = list(temp_dir.rglob("*"))
 
+        tsv_files = []
+        json_files = []
+        unstructured_files = []
+
+        for f in all_files:
+            if not f.is_file():
+                continue
+            # Skip schema directories and readme files
+            parts_lower = [p.lower() for p in f.parts]
+            if any("schema" in p for p in parts_lower):
+                continue
+            if f.stem.lower() == "readme":
+                continue
+
+            suffix = f.suffix.lower()
+            if suffix == ".tsv":
+                tsv_files.append(f)
+            elif suffix == ".json":
+                json_files.append(f)
+            elif suffix in (".pdf", ".rtf", ".tif", ".tiff"):
+                unstructured_files.append(f)
+
+        stats = {
+            "total_entries": 0,
+            "records_inserted": 0,
+            "records_skipped": 0,
+            "errors": [],
+            "unstructured_files": [],
+        }
+
+        # Process structured content
         if tsv_files:
-            # Find the directory containing TSV files
             tsv_dir = tsv_files[0].parent
-            return await _ingest_epic_dir(db, user_id, patient_id, upload_id, tsv_dir)
-        elif json_files:
-            # Try the first JSON file as FHIR
-            stats = {"total_entries": 0, "records_inserted": 0, "records_skipped": 0, "errors": []}
+            epic_stats = await _ingest_epic_dir(db, user_id, patient_id, upload_id, tsv_dir)
+            stats["total_entries"] += epic_stats.get("total_files", 0)
+            stats["records_inserted"] += epic_stats.get("records_inserted", 0)
+            stats["records_skipped"] += epic_stats.get("records_skipped", 0)
+            stats["errors"].extend(epic_stats.get("errors", []))
+
+        if json_files:
             for jf in json_files:
-                result = await _ingest_fhir(db, user_id, patient_id, upload_id, jf)
-                stats["total_entries"] += result.get("total_entries", 0)
-                stats["records_inserted"] += result.get("records_inserted", 0)
-                stats["records_skipped"] += result.get("records_skipped", 0)
-                stats["errors"].extend(result.get("errors", []))
-            return stats
-        else:
-            raise ValueError("ZIP contains no JSON or TSV files")
+                try:
+                    result = await _ingest_fhir(db, user_id, patient_id, upload_id, jf)
+                    stats["total_entries"] += result.get("total_entries", 0)
+                    stats["records_inserted"] += result.get("records_inserted", 0)
+                    stats["records_skipped"] += result.get("records_skipped", 0)
+                    stats["errors"].extend(result.get("errors", []))
+                except Exception as e:
+                    stats["errors"].append({"file": jf.name, "error": str(e)})
+
+        # Queue unstructured files for extraction
+        if unstructured_files:
+            for uf in unstructured_files:
+                try:
+                    # Copy to upload dir with UUID filename
+                    dest_name = f"{uuid4()}{uf.suffix}"
+                    dest_path = Path(settings.upload_dir) / dest_name
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(uf, dest_path)
+
+                    # Determine mime type
+                    suffix = uf.suffix.lower()
+                    mime_map = {
+                        ".pdf": "application/pdf",
+                        ".rtf": "application/rtf",
+                        ".tif": "image/tiff",
+                        ".tiff": "image/tiff",
+                    }
+
+                    unstr_upload = UploadedFile(
+                        id=uuid4(),
+                        user_id=user_id,
+                        filename=uf.name,
+                        mime_type=mime_map.get(suffix, "application/octet-stream"),
+                        file_size_bytes=uf.stat().st_size,
+                        file_hash=compute_file_hash(uf),
+                        storage_path=str(dest_path),
+                        ingestion_status="pending_extraction",
+                        file_category="unstructured",
+                    )
+                    db.add(unstr_upload)
+                    stats["unstructured_files"].append({
+                        "upload_id": str(unstr_upload.id),
+                        "filename": uf.name,
+                        "status": "pending_extraction",
+                    })
+                except Exception as e:
+                    stats["errors"].append({"file": uf.name, "error": str(e)})
+
+            await db.commit()
+
+        if not tsv_files and not json_files and not unstructured_files:
+            raise ValueError("ZIP contains no processable files")
+
+        return stats
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

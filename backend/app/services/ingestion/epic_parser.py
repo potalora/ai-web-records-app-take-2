@@ -10,11 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ingestion.bulk_inserter import bulk_insert_records
 from app.services.ingestion.epic_mappers.base import EpicMapper
+from app.services.ingestion.epic_mappers.allergies import AllergyMapper
 from app.services.ingestion.epic_mappers.documents import DocInformationMapper
+from app.services.ingestion.epic_mappers.encounter_dx import EncounterDxMapper
 from app.services.ingestion.epic_mappers.encounters import PatEncMapper
+from app.services.ingestion.epic_mappers.family_hx import FamilyHxMapper
+from app.services.ingestion.epic_mappers.immunizations import ImmuneMapper
 from app.services.ingestion.epic_mappers.medications import OrderMedMapper
 from app.services.ingestion.epic_mappers.problems import MedicalHxMapper, ProblemListMapper
+from app.services.ingestion.epic_mappers.procedures import OrderProcMapper
+from app.services.ingestion.epic_mappers.referrals import ReferralMapper
 from app.services.ingestion.epic_mappers.results import OrderResultsMapper
+from app.services.ingestion.epic_mappers.social_hx import SocialHxMapper
+from app.services.ingestion.epic_mappers.vitals import VitalsMapper
 from app.services.ingestion.fhir_parser import map_fhir_resource
 
 logger = logging.getLogger(__name__)
@@ -27,6 +35,14 @@ EPIC_TABLE_MAPPERS: dict[str, EpicMapper] = {
     "ORDER_RESULTS": OrderResultsMapper(),
     "PAT_ENC": PatEncMapper(),
     "DOC_INFORMATION": DocInformationMapper(),
+    "ALLERGY": AllergyMapper(),
+    "IMMUNE": ImmuneMapper(),
+    "ORDER_PROC": OrderProcMapper(),
+    "IP_FLWSHT_MEAS": VitalsMapper(),
+    "REFERRAL": ReferralMapper(),
+    "PAT_ENC_DX": EncounterDxMapper(),
+    "SOCIAL_HX": SocialHxMapper(),
+    "FAMILY_HX": FamilyHxMapper(),
 }
 
 RECORD_TYPE_MAP = {
@@ -38,6 +54,8 @@ RECORD_TYPE_MAP = {
     "Immunization": "immunization",
     "Procedure": "procedure",
     "AllergyIntolerance": "allergy",
+    "ServiceRequest": "service_request",
+    "FamilyMemberHistory": "condition",
 }
 
 
@@ -53,35 +71,43 @@ async def parse_epic_export(
     """Process an Epic EHI Tables export directory.
 
     Files are processed one at a time, rows streamed row-by-row.
+    Returns detailed stats including per-file breakdown.
     """
     tsv_files = sorted(export_dir.glob("*.tsv"))
     total_files = len(tsv_files)
-    stats = {
+    stats: dict[str, Any] = {
         "total_files": total_files,
         "files_processed": 0,
         "records_inserted": 0,
         "records_skipped": 0,
         "errors": [],
+        "files_detail": [],
+        "files_skipped": [],
     }
 
     for file_idx, tsv_path in enumerate(tsv_files):
         table_name = tsv_path.stem.upper()
         mapper = EPIC_TABLE_MAPPERS.get(table_name)
         if not mapper:
+            stats["files_skipped"].append(table_name)
             stats["records_skipped"] += 1
             continue
 
         logger.info("Processing Epic table: %s (%d/%d)", table_name, file_idx + 1, total_files)
         batch = []
         row_count = 0
+        rows_inserted = 0
+        rows_skipped = 0
 
         try:
             with open(tsv_path, "r", encoding="utf-8-sig") as f:
                 reader = csv.DictReader(f, delimiter="\t")
                 for row_idx, row in enumerate(reader):
+                    row_count += 1
                     try:
                         fhir_resource = mapper.to_fhir(row)
                         if not fhir_resource:
+                            rows_skipped += 1
                             continue
 
                         resource_type = fhir_resource.get("resourceType", "Unknown")
@@ -119,10 +145,10 @@ async def parse_epic_export(
                         }
 
                         batch.append(mapped)
-                        row_count += 1
 
                         if len(batch) >= batch_size:
                             count = await bulk_insert_records(db, batch)
+                            rows_inserted += count
                             stats["records_inserted"] += count
                             batch.clear()
                             await db.commit()
@@ -135,6 +161,7 @@ async def parse_epic_export(
 
             if batch:
                 count = await bulk_insert_records(db, batch)
+                rows_inserted += count
                 stats["records_inserted"] += count
                 batch.clear()
                 await db.commit()
@@ -144,7 +171,13 @@ async def parse_epic_export(
             logger.error("Error processing %s: %s", table_name, e)
 
         stats["files_processed"] += 1
-        logger.info("Processed %s: %d rows", table_name, row_count)
+        stats["files_detail"].append({
+            "table_name": table_name,
+            "rows_found": row_count,
+            "rows_inserted": rows_inserted,
+            "rows_skipped": rows_skipped,
+        })
+        logger.info("Processed %s: %d rows, %d inserted", table_name, row_count, rows_inserted)
 
         if progress_callback:
             await progress_callback(file_idx + 1, total_files, stats["records_inserted"])
