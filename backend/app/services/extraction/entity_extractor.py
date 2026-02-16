@@ -62,13 +62,22 @@ def extract_entities(text: str, source_file: str, api_key: str) -> ExtractionRes
                 start_pos = extraction.char_interval.start_pos
                 end_pos = extraction.char_interval.end_pos
 
+            attrs = extraction.attributes or {}
+            confidence = 0.8  # default
+            if "confidence" in attrs:
+                try:
+                    confidence = max(0.0, min(1.0, float(attrs["confidence"])))
+                except (ValueError, TypeError):
+                    pass
+
             entities.append(
                 ExtractedEntity(
                     entity_class=extraction.extraction_class,
                     text=extraction.extraction_text,
-                    attributes=extraction.attributes or {},
+                    attributes=attrs,
                     start_pos=start_pos,
                     end_pos=end_pos,
+                    confidence=confidence,
                 )
             )
 

@@ -106,6 +106,9 @@ async def test_labs_empty(client: AsyncClient, db_session: AsyncSession):
     assert resp.status_code == 200
     data = resp.json()
     assert data["items"] == []
+    assert data["total"] == 0
+    assert data["page"] == 1
+    assert data["page_size"] == 20
 
 
 @pytest.mark.asyncio
@@ -119,6 +122,9 @@ async def test_labs_with_observations(client: AsyncClient, db_session: AsyncSess
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["items"]) >= 1
+    assert data["total"] >= 1
+    assert data["page"] == 1
+    assert data["page_size"] == 20
 
     # Verify handoff fields for lab items
     for item in data["items"]:
@@ -141,6 +147,24 @@ async def test_labs_with_observations(client: AsyncClient, db_session: AsyncSess
 
 
 @pytest.mark.asyncio
+async def test_labs_pagination(client: AsyncClient, db_session: AsyncSession):
+    """Labs dashboard respects page and page_size parameters."""
+    headers, uid = await auth_headers(client)
+    patient = await create_test_patient(db_session, uid)
+    await seed_test_records(db_session, uid, patient.id, count=5)
+
+    # Request with small page_size
+    resp = await client.get("/api/v1/dashboard/labs?page=1&page_size=1", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) <= 1
+    assert data["page"] == 1
+    assert data["page_size"] == 1
+    # total should reflect all observations, not just this page
+    assert data["total"] >= 1
+
+
+@pytest.mark.asyncio
 async def test_labs_excludes_non_observations(client: AsyncClient, db_session: AsyncSession):
     """Labs endpoint only returns observation records, not conditions/meds."""
     headers, uid = await auth_headers(client)
@@ -154,6 +178,6 @@ async def test_labs_excludes_non_observations(client: AsyncClient, db_session: A
     all_resp = await client.get("/api/v1/records", headers=headers)
     all_data = all_resp.json()
 
-    # Labs should be fewer than total
+    # Labs total should match observation count from all records
     obs_count = sum(1 for i in all_data["items"] if i["record_type"] == "observation")
-    assert len(data["items"]) == obs_count
+    assert data["total"] == obs_count

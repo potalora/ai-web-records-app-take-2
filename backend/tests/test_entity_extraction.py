@@ -111,6 +111,10 @@ def test_entity_to_fhir_procedure():
     assert result["record_type"] == "procedure"
     fhir = result["fhir_resource"]
     assert fhir["code"]["text"] == "Colonoscopy"
+    # Date from attributes should be used, not datetime.now()
+    assert result["effective_date"] is not None
+    assert result["effective_date"].year == 2024
+    assert result["effective_date"].month == 1
 
 
 def test_entity_to_fhir_provider_skipped():
@@ -131,6 +135,69 @@ def test_entity_to_fhir_dosage_skipped():
     )
     result = entity_to_health_record_dict(entity, USER_ID, PATIENT_ID)
     assert result is None
+
+
+# ---------- Effective date extraction ----------
+
+def test_effective_date_from_date_attribute():
+    """Entity with 'date' attribute gets that date as effective_date."""
+    entity = ExtractedEntity(
+        entity_class="condition",
+        text="hypertension",
+        attributes={"status": "active", "date": "2023-06-15"},
+    )
+    result = entity_to_health_record_dict(entity, USER_ID, PATIENT_ID)
+    assert result["effective_date"] is not None
+    assert result["effective_date"].year == 2023
+    assert result["effective_date"].month == 6
+    assert result["effective_date"].day == 15
+
+
+def test_effective_date_none_when_no_date():
+    """Entity without any date attribute gets None, not datetime.now()."""
+    entity = ExtractedEntity(
+        entity_class="medication",
+        text="Metformin",
+        attributes={"medication_group": "Metformin"},
+    )
+    result = entity_to_health_record_dict(entity, USER_ID, PATIENT_ID)
+    assert result["effective_date"] is None
+
+
+def test_effective_date_from_onset_date():
+    """Entity with 'onset_date' attribute gets that date."""
+    entity = ExtractedEntity(
+        entity_class="condition",
+        text="diabetes",
+        attributes={"onset_date": "2020-03-01"},
+    )
+    result = entity_to_health_record_dict(entity, USER_ID, PATIENT_ID)
+    assert result["effective_date"] is not None
+    assert result["effective_date"].year == 2020
+
+
+def test_effective_date_partial_date():
+    """Partial dates like '01/2024' are parsed correctly."""
+    entity = ExtractedEntity(
+        entity_class="lab_result",
+        text="HbA1c 6.8%",
+        attributes={"test": "HbA1c", "value": "6.8", "unit": "%", "date": "01/2024"},
+    )
+    result = entity_to_health_record_dict(entity, USER_ID, PATIENT_ID)
+    assert result["effective_date"] is not None
+    assert result["effective_date"].year == 2024
+    assert result["effective_date"].month == 1
+
+
+def test_effective_date_invalid_date_returns_none():
+    """Invalid date string results in None, not an error."""
+    entity = ExtractedEntity(
+        entity_class="condition",
+        text="asthma",
+        attributes={"date": "not-a-date"},
+    )
+    result = entity_to_health_record_dict(entity, USER_ID, PATIENT_ID)
+    assert result["effective_date"] is None
 
 
 # ---------- Display text formatting ----------

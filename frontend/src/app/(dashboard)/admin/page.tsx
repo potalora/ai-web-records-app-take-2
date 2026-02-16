@@ -55,6 +55,11 @@ export default function AdminPage() {
   const initialTab = searchParams.get("tab") || "all";
   const [activeTab, setActiveTab] = useState(initialTab);
 
+  useEffect(() => {
+    const tab = searchParams.get("tab") || "all";
+    setActiveTab(tab);
+  }, [searchParams]);
+
   const handleTabChange = (key: string) => {
     setActiveTab(key);
     router.replace(`/admin?tab=${key}`, { scroll: false });
@@ -270,14 +275,20 @@ function interpretationLabel(interpretation: string): string {
 function LabsTab() {
   const [labs, setLabs] = useState<LabItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
     api
-      .get<{ items: LabItem[] }>("/dashboard/labs")
-      .then((data) => setLabs(data.items || []))
-      .catch(() => setLabs([]))
+      .get<{ items: LabItem[]; total: number; page: number; page_size: number }>(`/dashboard/labs?page=${page}&page_size=20`)
+      .then((data) => {
+        setLabs(data.items || []);
+        setTotal(data.total || 0);
+      })
+      .catch(() => { setLabs([]); setTotal(0); })
       .finally(() => setLoading(false));
-  }, []);
+  }, [page]);
 
   if (loading) return <RetroLoadingState text="Loading lab results" />;
 
@@ -295,67 +306,85 @@ function LabsTab() {
   }
 
   return (
-    <RetroTable>
-      <RetroTableHeader>
-        <RetroTableHead>Test</RetroTableHead>
-        <RetroTableHead>Value</RetroTableHead>
-        <RetroTableHead>Ref range</RetroTableHead>
-        <RetroTableHead>Interp</RetroTableHead>
-        <RetroTableHead>Date</RetroTableHead>
-      </RetroTableHeader>
-      <RetroTableBody>
-        {labs.map((lab) => (
-          <RetroTableRow key={lab.id}>
-            <RetroTableCell>
-              <div>
-                <p className="text-sm font-medium">{lab.display_text}</p>
-                {lab.code_display && lab.code_display !== lab.display_text && (
-                  <p className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
-                    {lab.code_display}
-                  </p>
-                )}
-              </div>
-            </RetroTableCell>
-            <RetroTableCell>
-              <span className="font-mono text-sm">
-                {lab.value !== null && lab.value !== undefined ? String(lab.value) : "--"}
-                {lab.unit && (
-                  <span className="ml-1" style={{ color: "var(--theme-text-muted)" }}>
-                    {lab.unit}
-                  </span>
-                )}
-              </span>
-            </RetroTableCell>
-            <RetroTableCell>
-              <span style={{ color: "var(--theme-text-dim)" }}>
-                {lab.reference_low !== null && lab.reference_high !== null
-                  ? `${lab.reference_low}–${lab.reference_high}`
-                  : lab.reference_low !== null
-                  ? `>= ${lab.reference_low}`
-                  : lab.reference_high !== null
-                  ? `<= ${lab.reference_high}`
-                  : "--"}
-              </span>
-            </RetroTableCell>
-            <RetroTableCell>
-              <span
-                className="text-xs font-medium"
-                style={interpretationStyle(lab.interpretation)}
-              >
-                {interpretationLabel(lab.interpretation)}
-              </span>
-            </RetroTableCell>
-            <RetroTableCell>
-              <span style={{ color: "var(--theme-text-dim)" }}>
-                {lab.effective_date
-                  ? new Date(lab.effective_date).toLocaleDateString()
-                  : "--"}
-              </span>
-            </RetroTableCell>
-          </RetroTableRow>
-        ))}
-      </RetroTableBody>
-    </RetroTable>
+    <>
+      <RetroTable>
+        <RetroTableHeader>
+          <RetroTableHead>Test</RetroTableHead>
+          <RetroTableHead>Value</RetroTableHead>
+          <RetroTableHead>Ref range</RetroTableHead>
+          <RetroTableHead>Interp</RetroTableHead>
+          <RetroTableHead>Date</RetroTableHead>
+        </RetroTableHeader>
+        <RetroTableBody>
+          {labs.map((lab) => (
+            <RetroTableRow key={lab.id}>
+              <RetroTableCell>
+                <div>
+                  <p className="text-sm font-medium">{lab.display_text}</p>
+                  {lab.code_display && lab.code_display !== lab.display_text && (
+                    <p className="text-xs" style={{ color: "var(--theme-text-muted)" }}>
+                      {lab.code_display}
+                    </p>
+                  )}
+                </div>
+              </RetroTableCell>
+              <RetroTableCell>
+                <span className="font-mono text-sm">
+                  {lab.value !== null && lab.value !== undefined ? String(lab.value) : "--"}
+                  {lab.unit && (
+                    <span className="ml-1" style={{ color: "var(--theme-text-muted)" }}>
+                      {lab.unit}
+                    </span>
+                  )}
+                </span>
+              </RetroTableCell>
+              <RetroTableCell>
+                <span style={{ color: "var(--theme-text-dim)" }}>
+                  {lab.reference_low !== null && lab.reference_high !== null
+                    ? `${lab.reference_low}–${lab.reference_high}`
+                    : lab.reference_low !== null
+                    ? `>= ${lab.reference_low}`
+                    : lab.reference_high !== null
+                    ? `<= ${lab.reference_high}`
+                    : "--"}
+                </span>
+              </RetroTableCell>
+              <RetroTableCell>
+                <span
+                  className="text-xs font-medium"
+                  style={interpretationStyle(lab.interpretation)}
+                >
+                  {interpretationLabel(lab.interpretation)}
+                </span>
+              </RetroTableCell>
+              <RetroTableCell>
+                <span style={{ color: "var(--theme-text-dim)" }}>
+                  {lab.effective_date
+                    ? new Date(lab.effective_date).toLocaleDateString()
+                    : "--"}
+                </span>
+              </RetroTableCell>
+            </RetroTableRow>
+          ))}
+        </RetroTableBody>
+      </RetroTable>
+
+      {total > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs" style={{ color: "var(--theme-text-dim)" }}>
+            {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total}
+          </span>
+          <div className="flex gap-2">
+            <RetroButton variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              Prev
+            </RetroButton>
+            <RetroButton variant="ghost" disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </RetroButton>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -459,6 +488,24 @@ function UploadTab() {
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const [uploads, setUploads] = useState<Array<{
+    id: string;
+    original_filename: string;
+    ingestion_status: string;
+    records_inserted?: number;
+    created_at: string;
+    file_category?: string;
+  }>>([]);
+  const [uploadsLoading, setUploadsLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get<{ items: Array<any>; total: number }>("/upload/history")
+      .then((data) => setUploads(data.items || []))
+      .catch(() => setUploads([]))
+      .finally(() => setUploadsLoading(false));
+  }, [result]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -631,6 +678,72 @@ function UploadTab() {
 
       {/* Unstructured Upload Section */}
       <UnstructuredUploadSection />
+
+      {/* Upload History */}
+      <div className="space-y-4 mt-8">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-px" style={{ backgroundColor: "var(--theme-border)" }} />
+          <span className="text-xs font-medium" style={{ color: "var(--theme-text-dim)" }}>
+            Upload history
+          </span>
+          <div className="flex-1 h-px" style={{ backgroundColor: "var(--theme-border)" }} />
+        </div>
+
+        {uploadsLoading ? (
+          <RetroLoadingState text="Loading upload history" />
+        ) : uploads.length === 0 ? (
+          <p className="text-xs text-center py-4" style={{ color: "var(--theme-text-muted)" }}>
+            No uploads yet
+          </p>
+        ) : (
+          <RetroTable>
+            <RetroTableHeader>
+              <RetroTableHead>Filename</RetroTableHead>
+              <RetroTableHead>Status</RetroTableHead>
+              <RetroTableHead>Records</RetroTableHead>
+              <RetroTableHead>Date</RetroTableHead>
+            </RetroTableHeader>
+            <RetroTableBody>
+              {uploads.map((upload) => (
+                <RetroTableRow key={upload.id}>
+                  <RetroTableCell className="max-w-xs truncate">
+                    {upload.original_filename}
+                  </RetroTableCell>
+                  <RetroTableCell>
+                    <span
+                      className="text-xs font-medium px-2 py-0.5"
+                      style={{
+                        borderRadius: "4px",
+                        backgroundColor:
+                          upload.ingestion_status === "completed" ? "var(--theme-sage)" :
+                          upload.ingestion_status === "processing" ? "var(--theme-amber)" :
+                          upload.ingestion_status === "failed" ? "var(--theme-terracotta)" :
+                          upload.ingestion_status === "awaiting_confirmation" ? "var(--record-procedure-text)" :
+                          "var(--theme-text-muted)",
+                        color: "var(--theme-bg-deep)",
+                      }}
+                    >
+                      {upload.ingestion_status}
+                    </span>
+                  </RetroTableCell>
+                  <RetroTableCell>
+                    <span style={{ color: "var(--theme-text-dim)" }}>
+                      {upload.records_inserted ?? "--"}
+                    </span>
+                  </RetroTableCell>
+                  <RetroTableCell>
+                    <span style={{ color: "var(--theme-text-dim)" }}>
+                      {upload.created_at
+                        ? new Date(upload.created_at).toLocaleDateString()
+                        : "--"}
+                    </span>
+                  </RetroTableCell>
+                </RetroTableRow>
+              ))}
+            </RetroTableBody>
+          </RetroTable>
+        )}
+      </div>
     </div>
   );
 }

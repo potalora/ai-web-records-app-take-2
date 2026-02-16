@@ -19,6 +19,10 @@ async def detect_duplicates(
 ) -> int:
     """Scan for duplicate records and create dedup candidates.
 
+    Uses hash-based bucketing to reduce comparisons from O(n^2) to
+    bucket-scoped pairs, batch existence checks via an in-memory set,
+    and bulk inserts for new candidates.
+
     Returns the number of new candidates found.
     """
     # Fetch all active records for patient
@@ -37,41 +41,54 @@ async def detect_duplicates(
     if len(records) < 2:
         return 0
 
-    # Group records by type for comparison
-    by_type: dict[str, list[HealthRecord]] = {}
+    # Pre-load all existing candidate pairs into a set (batch existence check)
+    existing_result = await db.execute(
+        select(DedupCandidate.record_a_id, DedupCandidate.record_b_id)
+    )
+    existing_pairs: set[tuple[UUID, UUID]] = set()
+    for r in existing_result.all():
+        existing_pairs.add((r[0], r[1]))
+        existing_pairs.add((r[1], r[0]))  # both orderings
+
+    # Group records by type + code/text key for bucket-based comparison
+    buckets: dict[tuple, list[HealthRecord]] = {}
     for r in records:
-        by_type.setdefault(r.record_type, []).append(r)
+        key = (r.record_type, (r.code_value or (r.display_text or "")[:50].lower()))
+        buckets.setdefault(key, []).append(r)
 
-    candidates_found = 0
+    new_candidates: list[dict] = []
 
-    for rtype, recs in by_type.items():
-        for i, a in enumerate(recs):
-            for b in recs[i + 1 :]:
+    for key, bucket in buckets.items():
+        if len(bucket) < 2:
+            continue
+        for i, a in enumerate(bucket):
+            for b in bucket[i + 1 :]:
                 score, reasons = _compare_records(a, b)
                 if score >= 0.7:
-                    # Check if candidate already exists
-                    existing = await db.execute(
-                        select(DedupCandidate).where(
-                            DedupCandidate.record_a_id == a.id,
-                            DedupCandidate.record_b_id == b.id,
-                        )
-                    )
-                    if existing.scalar_one_or_none():
+                    if (a.id, b.id) in existing_pairs:
                         continue
+                    new_candidates.append({
+                        "id": uuid4(),
+                        "record_a_id": a.id,
+                        "record_b_id": b.id,
+                        "similarity_score": score,
+                        "match_reasons": reasons,
+                        "status": "pending",
+                    })
+                    # Add to existing_pairs to prevent duplicate inserts within same run
+                    existing_pairs.add((a.id, b.id))
+                    existing_pairs.add((b.id, a.id))
 
-                    candidate = DedupCandidate(
-                        id=uuid4(),
-                        record_a_id=a.id,
-                        record_b_id=b.id,
-                        similarity_score=score,
-                        match_reasons=reasons,
-                    )
-                    db.add(candidate)
-                    candidates_found += 1
+    if new_candidates:
+        from sqlalchemy import insert
 
-    if candidates_found:
+        # Insert in batches of 100
+        for i in range(0, len(new_candidates), 100):
+            batch = new_candidates[i : i + 100]
+            await db.execute(insert(DedupCandidate), batch)
         await db.commit()
 
+    candidates_found = len(new_candidates)
     logger.info("Found %d dedup candidates for patient %s", candidates_found, patient_id)
     return candidates_found
 

@@ -51,6 +51,7 @@ async def build_prompt_endpoint(
             date_from=body.date_from,
             date_to=body.date_to,
             record_ids=body.record_ids,
+            record_types=body.record_types,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

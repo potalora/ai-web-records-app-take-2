@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import shutil
@@ -12,12 +13,24 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+
+# Global semaphore to limit concurrent Gemini API calls across all uploads
+_gemini_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_gemini_semaphore() -> asyncio.Semaphore:
+    global _gemini_semaphore
+    if _gemini_semaphore is None:
+        _gemini_semaphore = asyncio.Semaphore(settings.gemini_concurrency_limit)
+    return _gemini_semaphore
+
 from app.database import get_db
 from app.dependencies import get_authenticated_user_id
 from app.middleware.audit import log_audit_event
 from app.models.record import HealthRecord
 from app.models.uploaded_file import UploadedFile
 from app.schemas.upload import (
+    BatchUploadResponse,
     ConfirmExtractionRequest,
     ExtractedEntitySchema,
     ExtractionResultResponse,
@@ -261,18 +274,22 @@ async def _process_unstructured(upload_id: UUID, file_path: Path, user_id: UUID)
             upload.ingestion_status = "processing"
             await db.commit()
 
-            # Step 1: Extract text
-            text, file_type = await extract_text(file_path, settings.gemini_api_key)
+            sem = _get_gemini_semaphore()
+
+            # Step 1: Extract text (Gemini for PDF/TIFF, local for RTF)
+            async with sem:
+                text, file_type = await extract_text(file_path, settings.gemini_api_key)
             upload.extracted_text = text
             await db.commit()
 
-            # Step 2: Scrub PHI before entity extraction (C4)
+            # Step 2: Scrub PHI before entity extraction (C4) — local, no semaphore
             scrubbed_text, deident_report = scrub_phi(text)
 
-            # Step 3: Extract entities from scrubbed text
-            extraction = await extract_entities_async(
-                scrubbed_text, upload.filename, settings.gemini_api_key
-            )
+            # Step 3: Extract entities from scrubbed text (Gemini via LangExtract)
+            async with sem:
+                extraction = await extract_entities_async(
+                    scrubbed_text, upload.filename, settings.gemini_api_key
+                )
 
             if extraction.error:
                 upload.ingestion_status = "failed"
@@ -382,6 +399,82 @@ async def upload_unstructured(
         status="processing",
         file_type=file_type.value,
     )
+
+
+@router.post(
+    "/unstructured-batch",
+    response_model=BatchUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload_unstructured_batch(
+    files: list[UploadFile],
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(get_authenticated_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> BatchUploadResponse:
+    """Upload multiple unstructured files for concurrent processing."""
+    from app.services.extraction.text_extractor import detect_file_type
+
+    upload_dir = Path(settings.upload_dir)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    results = []
+    for file in files:
+        if not file.filename:
+            continue
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_UNSTRUCTURED:
+            continue
+
+        file_path = _safe_file_path(upload_dir, user_id, file.filename)
+        content = await file.read()
+        if len(content) > settings.max_file_size_mb * 1024 * 1024:
+            continue
+
+        if not _validate_magic_bytes(content, ext):
+            continue
+
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        file_hash = hashlib.sha256(content).hexdigest()
+
+        upload_record = UploadedFile(
+            id=uuid4(),
+            user_id=user_id,
+            filename=file.filename,
+            mime_type=file.content_type or "application/octet-stream",
+            file_size_bytes=len(content),
+            file_hash=file_hash,
+            storage_path=str(file_path),
+            ingestion_status="processing",
+            file_category="unstructured",
+        )
+        db.add(upload_record)
+        await db.flush()
+
+        await log_audit_event(
+            db,
+            user_id=user_id,
+            action="file.upload.unstructured",
+            resource_type="uploaded_file",
+            resource_id=upload_record.id,
+            details={"filename": file.filename, "file_type": ext},
+        )
+
+        background_tasks.add_task(_process_unstructured, upload_record.id, file_path, user_id)
+
+        file_type = detect_file_type(file_path)
+        results.append(UnstructuredUploadResponse(
+            upload_id=str(upload_record.id),
+            status="processing",
+            file_type=file_type.value,
+        ))
+
+    await db.commit()
+
+    return BatchUploadResponse(uploads=results, total=len(results))
 
 
 @router.get("/{upload_id}/extraction", response_model=ExtractionResultResponse)

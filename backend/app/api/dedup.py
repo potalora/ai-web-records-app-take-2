@@ -28,55 +28,52 @@ async def list_candidates(
 ):
     """List dedup candidates with record details (paginated)."""
     from sqlalchemy import func
+    from sqlalchemy.orm import aliased
 
-    # Get user's record IDs
-    records_query = select(HealthRecord.id).where(HealthRecord.user_id == user_id)
-    result = await db.execute(records_query)
-    record_ids = {row[0] for row in result.all()}
+    RecordA = aliased(HealthRecord)
+    RecordB = aliased(HealthRecord)
 
-    if not record_ids:
-        return {"items": [], "total": 0}
-
-    # Count total pending candidates
-    count_result = await db.execute(
-        select(func.count(DedupCandidate.id)).where(
-            DedupCandidate.record_a_id.in_(record_ids),
+    # Base query with JOINs — filter by user through record_a
+    base = (
+        select(DedupCandidate, RecordA, RecordB)
+        .join(RecordA, DedupCandidate.record_a_id == RecordA.id)
+        .join(RecordB, DedupCandidate.record_b_id == RecordB.id)
+        .where(
+            RecordA.user_id == user_id,
             DedupCandidate.status == "pending",
         )
     )
+
+    # Count total pending candidates (use a subquery for efficiency)
+    count_q = select(func.count()).select_from(base.subquery())
+    count_result = await db.execute(count_q)
     total = count_result.scalar() or 0
 
-    # Get paginated candidates
-    offset = (page - 1) * limit
-    candidates_result = await db.execute(
-        select(DedupCandidate)
-        .where(
-            DedupCandidate.record_a_id.in_(record_ids),
-            DedupCandidate.status == "pending",
+    if total == 0:
+        await log_audit_event(
+            db, user_id=user_id, action="dedup.list_candidates",
+            resource_type="dedup",
+            ip_address=request.client.host if request.client else None,
+            details={"total": 0, "page": page},
         )
-        .order_by(DedupCandidate.similarity_score.desc())
+        return {"items": [], "total": 0}
+
+    # Paginated fetch with JOIN
+    offset = (page - 1) * limit
+    result = await db.execute(
+        base.order_by(DedupCandidate.similarity_score.desc())
         .offset(offset)
         .limit(limit)
     )
-    candidates = candidates_result.scalars().all()
+    rows = result.all()
 
     items = []
-    for c in candidates:
-        # Fetch both records
-        a_result = await db.execute(
-            select(HealthRecord).where(HealthRecord.id == c.record_a_id)
-        )
-        b_result = await db.execute(
-            select(HealthRecord).where(HealthRecord.id == c.record_b_id)
-        )
-        record_a = a_result.scalar_one_or_none()
-        record_b = b_result.scalar_one_or_none()
-
+    for candidate, record_a, record_b in rows:
         items.append({
-            "id": str(c.id),
-            "similarity_score": c.similarity_score,
-            "match_reasons": c.match_reasons,
-            "status": c.status,
+            "id": str(candidate.id),
+            "similarity_score": candidate.similarity_score,
+            "match_reasons": candidate.match_reasons,
+            "status": candidate.status,
             "record_a": {
                 "id": str(record_a.id),
                 "display_text": record_a.display_text,
@@ -85,9 +82,7 @@ async def list_candidates(
                 "effective_date": record_a.effective_date.isoformat()
                 if record_a.effective_date
                 else None,
-            }
-            if record_a
-            else None,
+            },
             "record_b": {
                 "id": str(record_b.id),
                 "display_text": record_b.display_text,
@@ -96,15 +91,11 @@ async def list_candidates(
                 "effective_date": record_b.effective_date.isoformat()
                 if record_b.effective_date
                 else None,
-            }
-            if record_b
-            else None,
+            },
         })
 
     await log_audit_event(
-        db,
-        user_id=user_id,
-        action="dedup.list_candidates",
+        db, user_id=user_id, action="dedup.list_candidates",
         resource_type="dedup",
         ip_address=request.client.host if request.client else None,
         details={"total": total, "page": page},

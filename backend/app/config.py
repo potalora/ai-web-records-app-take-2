@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     gemini_extraction_model: str = "gemini-2.5-flash"
     gemini_summary_temperature: float = 0.3
     gemini_summary_max_tokens: int = 8192
+    gemini_concurrency_limit: int = 10
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

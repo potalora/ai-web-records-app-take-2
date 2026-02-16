@@ -24,7 +24,13 @@ import app.models  # noqa: F401
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
-TEST_DB_URL = settings.database_url
+# Use a dedicated test database to avoid destroying production data.
+# Derive from the production URL by appending "_test" to the database name.
+_prod_url = settings.database_url
+if "_test" not in _prod_url:
+    TEST_DB_URL = _prod_url.rsplit("/", 1)[0] + "/" + _prod_url.rsplit("/", 1)[1] + "_test"
+else:
+    TEST_DB_URL = _prod_url
 
 
 @pytest_asyncio.fixture
@@ -36,14 +42,12 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Clean up any leftover data from prior runs
+    # Clean up any leftover data from prior runs (CASCADE handles FK deps)
     async with engine.begin() as conn:
-        for table in [
-            "revoked_tokens", "provenance", "dedup_candidates", "health_records",
-            "ai_summary_prompts", "uploaded_files", "patients",
-            "audit_log", "users",
-        ]:
-            await conn.execute(text(f"DELETE FROM {table}"))
+        await conn.execute(text(
+            "TRUNCATE revoked_tokens, provenance, dedup_candidates, health_records, "
+            "ai_summary_prompts, uploaded_files, patients, audit_log, users CASCADE"
+        ))
 
     session_factory = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
@@ -51,14 +55,12 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
         yield session
 
-    # Clean up all data after each test (reverse FK order)
+    # Clean up all data after each test (CASCADE handles FK deps)
     async with engine.begin() as conn:
-        for table in [
-            "revoked_tokens", "provenance", "dedup_candidates", "health_records",
-            "ai_summary_prompts", "uploaded_files", "patients",
-            "audit_log", "users",
-        ]:
-            await conn.execute(text(f"DELETE FROM {table}"))
+        await conn.execute(text(
+            "TRUNCATE revoked_tokens, provenance, dedup_candidates, health_records, "
+            "ai_summary_prompts, uploaded_files, patients, audit_log, users CASCADE"
+        ))
 
     await engine.dispose()
 

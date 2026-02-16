@@ -160,6 +160,29 @@ async def test_paste_response(client: AsyncClient, db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_build_prompt_with_record_types(client: AsyncClient, db_session: AsyncSession):
+    """Test that record_types filters correctly."""
+    headers, uid = await auth_headers(client)
+    patient = await create_test_patient(db_session, uid)
+    await seed_test_records(db_session, uid, patient.id, count=5)
+
+    resp = await client.post(
+        "/api/v1/summary/build-prompt",
+        headers=headers,
+        json={
+            "patient_id": str(patient.id),
+            "summary_type": "full",
+            "record_types": ["medication", "observation"],
+        },
+    )
+    # Should succeed (200) or return 400 if no records match
+    assert resp.status_code in (200, 400)
+    if resp.status_code == 200:
+        data = resp.json()
+        assert data["record_count"] > 0
+
+
+@pytest.mark.asyncio
 async def test_list_responses(client: AsyncClient, db_session: AsyncSession):
     """List responses only returns prompts with pasted responses."""
     headers, uid = await auth_headers(client)

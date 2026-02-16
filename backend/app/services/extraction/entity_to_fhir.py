@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from app.services.extraction.entity_extractor import ExtractedEntity
+from app.utils.date_utils import parse_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ def entity_to_health_record_dict(
     fhir_resource = _build_fhir_resource(entity, fhir_resource_type)
     display_text = _build_display_text(entity)
 
+    effective_date = _extract_effective_date(entity)
+
     return {
         "id": uuid4(),
         "patient_id": patient_id,
@@ -54,7 +57,7 @@ def entity_to_health_record_dict(
         "fhir_resource": fhir_resource,
         "source_format": "ai_extracted",
         "source_file_id": source_file_id,
-        "effective_date": datetime.now(timezone.utc),
+        "effective_date": effective_date,
         "status": entity.attributes.get("status", "unknown"),
         "category": [record_type],
         "code_display": entity.text,
@@ -63,6 +66,25 @@ def entity_to_health_record_dict(
         "confidence_score": entity.confidence,
         "ai_extracted": True,
     }
+
+
+_DATE_ATTRIBUTE_KEYS = ("date", "effective_date", "onset_date", "performed_date", "recorded_date")
+
+
+def _extract_effective_date(entity: ExtractedEntity) -> datetime | None:
+    """Extract clinical date from entity attributes.
+
+    Checks multiple attribute keys for date values.
+    Returns None if no date can be determined — never defaults to now().
+    """
+    attrs = entity.attributes
+    for key in _DATE_ATTRIBUTE_KEYS:
+        raw = attrs.get(key)
+        if raw:
+            parsed = parse_datetime(str(raw))
+            if parsed:
+                return parsed
+    return None
 
 
 def _build_fhir_resource(entity: ExtractedEntity, resource_type: str) -> dict:
@@ -86,6 +108,8 @@ def _build_fhir_resource(entity: ExtractedEntity, resource_type: str) -> dict:
 
     elif resource_type == "Condition":
         status = attrs.get("status", "active")
+        if status in ("negated", "ruled_out", "absent"):
+            status = "inactive"  # FHIR-valid status for negated conditions
         resource["clinicalStatus"] = {
             "coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": status}]
         }

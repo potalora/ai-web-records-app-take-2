@@ -8,7 +8,27 @@ Entity types: medication, dosage, route, frequency, condition, lab_result, vital
 Use exact text from the input. Do not paraphrase.
 Use attributes to group related entities (e.g. medication_group for drug details).
 For lab results, include value, unit, and reference range as attributes when available.
-For conditions, include status (active, resolved, historical) as an attribute."""
+For conditions, include status (active, resolved, historical) as an attribute.
+IMPORTANT: For ALL entity types, include a "date" attribute when a date is mentioned or can be inferred from context (e.g. note date, visit date, order date). Use the format found in the text.
+
+CRITICAL: Only extract conditions that DIRECTLY APPLY TO THIS PATIENT.
+Do NOT extract conditions from:
+- Educational text ("can cause", "may develop", "is associated with")
+- Disease descriptions or informational paragraphs
+- Differential diagnosis lists unless explicitly attributed to the patient
+
+NEGATION: Do NOT extract negated findings as positive conditions.
+Phrases like "No X", "denies X", "negative for X", "ruled out X", "absence of X"
+mean the condition is NOT present. Either skip these entirely or set status="negated".
+
+FAMILY HISTORY: Conditions belonging to family members (e.g., "Father has X",
+"Family history of X", "Mother with X") must NOT be extracted as patient conditions.
+Skip family history conditions entirely.
+
+For each entity, include a "confidence" attribute (0.0-1.0):
+- High (>0.8): Exact text match, clear clinical meaning
+- Medium (0.5-0.8): Requires context interpretation
+- Low (<0.5): Ambiguous or uncertain"""
 
 CLINICAL_EXAMPLES = [
     lx.data.ExampleData(
@@ -27,7 +47,7 @@ CLINICAL_EXAMPLES = [
             lx.data.Extraction(
                 extraction_class="medication",
                 extraction_text="Cefazolin",
-                attributes={"medication_group": "Cefazolin", "drug_class": "antibiotic"},
+                attributes={"medication_group": "Cefazolin", "drug_class": "antibiotic", "confidence": "0.95"},
             ),
             lx.data.Extraction(
                 extraction_class="frequency",
@@ -42,7 +62,7 @@ CLINICAL_EXAMPLES = [
             lx.data.Extraction(
                 extraction_class="condition",
                 extraction_text="hypertension",
-                attributes={"status": "active", "controlled": "true"},
+                attributes={"status": "active", "controlled": "true", "confidence": "0.90"},
             ),
             lx.data.Extraction(
                 extraction_class="vital",
@@ -62,7 +82,7 @@ CLINICAL_EXAMPLES = [
             lx.data.Extraction(
                 extraction_class="lab_result",
                 extraction_text="HbA1c 6.8%",
-                attributes={"test": "HbA1c", "value": "6.8", "unit": "%", "ref_low": "4.0", "ref_high": "5.6", "interpretation": "high"},
+                attributes={"test": "HbA1c", "value": "6.8", "unit": "%", "ref_low": "4.0", "ref_high": "5.6", "interpretation": "high", "confidence": "0.95"},
             ),
             lx.data.Extraction(
                 extraction_class="medication",
@@ -99,6 +119,19 @@ CLINICAL_EXAMPLES = [
                 extraction_text="Colonoscopy",
                 attributes={"date": "01/2024"},
             ),
+        ],
+    ),
+    lx.data.ExampleData(
+        text="No chest pain. Denies shortness of breath. History of diabetes, controlled. Family history of heart disease (father).",
+        extractions=[
+            # chest pain: SKIPPED (negated)
+            # shortness of breath: SKIPPED (negated)
+            lx.data.Extraction(
+                extraction_class="condition",
+                extraction_text="diabetes",
+                attributes={"status": "active", "controlled": "true", "date": ""},
+            ),
+            # heart disease: SKIPPED (family history, not patient's)
         ],
     ),
 ]

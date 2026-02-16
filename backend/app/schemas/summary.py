@@ -13,6 +13,7 @@ class BuildPromptRequest(BaseModel):
     date_from: datetime | None = None
     date_to: datetime | None = None
     record_ids: list[UUID] | None = None
+    record_types: list[str] | None = None
 
 
 class PromptResponse(BaseModel):

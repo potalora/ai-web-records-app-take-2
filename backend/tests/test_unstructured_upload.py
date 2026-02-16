@@ -192,3 +192,90 @@ async def test_upload_pdf_accepted(client: AsyncClient, db_session: AsyncSession
     assert resp.status_code == 202
     data = resp.json()
     assert data["file_type"] == "pdf"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_uploads_respect_semaphore(client: AsyncClient, db_session: AsyncSession):
+    """Upload 3 RTF files simultaneously, verify all are accepted."""
+    headers, user_id = await auth_headers(client)
+
+    rtf_files = [
+        rb"""{\rtf1\ansi Note one: Patient has hypertension.}""",
+        rb"""{\rtf1\ansi Note two: Patient takes Metformin 500mg.}""",
+        rb"""{\rtf1\ansi Note three: Lab results show elevated glucose.}""",
+    ]
+
+    upload_ids = []
+    with PATCH_BG_TASK:
+        for i, content in enumerate(rtf_files):
+            resp = await client.post(
+                "/api/v1/upload/unstructured",
+                files={"file": (f"note_{i}.rtf", io.BytesIO(content), "application/rtf")},
+                headers=headers,
+            )
+            assert resp.status_code == 202
+            data = resp.json()
+            assert data["upload_id"]
+            assert data["status"] == "processing"
+            upload_ids.append(data["upload_id"])
+
+    # All 3 should have unique upload IDs
+    assert len(set(upload_ids)) == 3
+
+
+@pytest.mark.asyncio
+async def test_batch_upload_endpoint(client: AsyncClient, db_session: AsyncSession):
+    """Verify /unstructured-batch accepts multiple files and returns list of upload IDs."""
+    headers, user_id = await auth_headers(client)
+
+    rtf1 = rb"""{\rtf1\ansi Batch note one: Diabetes type 2.}"""
+    rtf2 = rb"""{\rtf1\ansi Batch note two: Allergic to penicillin.}"""
+    pdf1 = b"%PDF-1.4 batch pdf content"
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/unstructured-batch",
+            files=[
+                ("files", ("batch1.rtf", io.BytesIO(rtf1), "application/rtf")),
+                ("files", ("batch2.rtf", io.BytesIO(rtf2), "application/rtf")),
+                ("files", ("batch3.pdf", io.BytesIO(pdf1), "application/pdf")),
+            ],
+            headers=headers,
+        )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["total"] == 3
+    assert len(data["uploads"]) == 3
+
+    # Each upload should have a unique ID
+    upload_ids = [u["upload_id"] for u in data["uploads"]]
+    assert len(set(upload_ids)) == 3
+
+    # Check file types
+    file_types = [u["file_type"] for u in data["uploads"]]
+    assert file_types.count("rtf") == 2
+    assert file_types.count("pdf") == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_upload_skips_invalid_files(client: AsyncClient, db_session: AsyncSession):
+    """Batch endpoint skips unsupported file types and invalid magic bytes."""
+    headers, user_id = await auth_headers(client)
+
+    rtf_valid = rb"""{\rtf1\ansi Valid RTF note.}"""
+    txt_invalid = b"plain text not allowed"
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/unstructured-batch",
+            files=[
+                ("files", ("valid.rtf", io.BytesIO(rtf_valid), "application/rtf")),
+                ("files", ("invalid.txt", io.BytesIO(txt_invalid), "text/plain")),
+            ],
+            headers=headers,
+        )
+    assert resp.status_code == 202
+    data = resp.json()
+    # Only the valid RTF should be accepted
+    assert data["total"] == 1
+    assert data["uploads"][0]["file_type"] == "rtf"

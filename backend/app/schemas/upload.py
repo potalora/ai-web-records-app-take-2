@@ -62,6 +62,16 @@ class ExtractionResultResponse(BaseModel):
     error: str | None = None
 
 
+class BatchUploadResponse(BaseModel):
+    uploads: list[UnstructuredUploadResponse]
+    total: int
+
+
+class BatchUploadResponse(BaseModel):
+    uploads: list[UnstructuredUploadResponse]
+    total: int
+
+
 class ConfirmExtractionRequest(BaseModel):
     confirmed_entities: list[ExtractedEntitySchema]
     patient_id: str

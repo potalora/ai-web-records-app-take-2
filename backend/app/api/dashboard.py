@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,19 +109,32 @@ async def get_overview(
 @router.get("/labs")
 async def get_labs_dashboard(
     request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     user_id: UUID = Depends(get_authenticated_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lab-specific dashboard data with observations."""
+    """Lab-specific dashboard data with observations (paginated)."""
+    base_filter = [
+        HealthRecord.user_id == user_id,
+        HealthRecord.deleted_at.is_(None),
+        HealthRecord.record_type == "observation",
+    ]
+
+    # Count total
+    count_result = await db.execute(
+        select(func.count()).where(*base_filter)
+    )
+    total = count_result.scalar() or 0
+
+    # Paginated fetch
+    offset = (page - 1) * page_size
     result = await db.execute(
         select(HealthRecord)
-        .where(
-            HealthRecord.user_id == user_id,
-            HealthRecord.deleted_at.is_(None),
-            HealthRecord.record_type == "observation",
-        )
+        .where(*base_filter)
         .order_by(HealthRecord.effective_date.desc().nullslast())
-        .limit(200)
+        .offset(offset)
+        .limit(page_size)
     )
     records = result.scalars().all()
 
@@ -158,7 +171,7 @@ async def get_labs_dashboard(
         ip_address=request.client.host if request.client else None,
     )
 
-    return {"items": items, "total": len(items)}
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/patients")

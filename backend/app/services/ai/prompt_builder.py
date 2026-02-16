@@ -47,6 +47,7 @@ async def build_prompt(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     record_ids: list[UUID] | None = None,
+    record_types: list[str] | None = None,
 ) -> dict:
     """Build a complete de-identified prompt for AI summarization.
 
@@ -62,6 +63,8 @@ async def build_prompt(
 
     if record_ids:
         query = query.where(HealthRecord.id.in_(record_ids))
+    elif record_types:
+        query = query.where(HealthRecord.record_type.in_(record_types))
     elif category and category != "full":
         query = query.where(HealthRecord.record_type == category)
 
