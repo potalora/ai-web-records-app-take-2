@@ -89,3 +89,6 @@ backend/data/
 
 # Screenshots (dev artifacts)
 *.png
+
+# Git worktrees
+.worktrees/
