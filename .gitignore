@@ -34,6 +34,9 @@ Thumbs.db
 data/uploads/
 data/tmp/
 
+# User Docs
+testing_issue.md
+
 # User-provided test data (may contain real PHI)
 backend/tests/fixtures/user_provided_*
 backend/tests/fixtures/epic_export/
