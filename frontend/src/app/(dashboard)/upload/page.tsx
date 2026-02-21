@@ -12,6 +12,7 @@ import type {
   ExtractionResult,
   ExtractedEntity,
   PatientInfo,
+  TriggerExtractionResponse,
 } from "@/types/api";
 import { GlowText } from "@/components/retro/GlowText";
 import { RetroCard, RetroCardHeader, RetroCardContent } from "@/components/retro/RetroCard";
@@ -120,6 +121,18 @@ export default function UploadPage() {
   const [history, setHistory] = useState<UploadHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  // --- Extraction trigger state (for unstructured files from ZIP uploads) ---
+  const [pendingExtractions, setPendingExtractions] = useState<
+    { upload_id: string; filename: string; status: string }[]
+  >([]);
+  const [selectedForExtraction, setSelectedForExtraction] = useState<Set<string>>(
+    new Set()
+  );
+  const [extractionTriggered, setExtractionTriggered] = useState(false);
+  const [extractionStatuses, setExtractionStatuses] = useState<
+    Record<string, string>
+  >({});
 
   // --- Directory upload (client-side zipping) ---
   const {
@@ -260,6 +273,9 @@ export default function UploadPage() {
         formData.append("file", file);
         const resp = await api.postForm<UploadResponse>("/upload", formData);
         results.push({ type: "structured", filename: file.name, response: resp });
+        if (resp.unstructured_uploads && resp.unstructured_uploads.length > 0) {
+          setPendingExtractions((prev) => [...prev, ...resp.unstructured_uploads!]);
+        }
       } catch (err) {
         results.push({
           type: "structured",
@@ -328,6 +344,103 @@ export default function UploadPage() {
     // Refresh history on next open
     setHistoryLoaded(false);
   }, [selectedFiles]);
+
+  // --- Extraction trigger handlers ---
+  const handleTriggerExtraction = useCallback(async () => {
+    if (selectedForExtraction.size === 0) return;
+    setExtractionTriggered(true);
+
+    const ids = Array.from(selectedForExtraction);
+
+    try {
+      const resp = await api.post<TriggerExtractionResponse>(
+        "/upload/trigger-extraction",
+        { upload_ids: ids }
+      );
+
+      const statuses: Record<string, string> = {};
+      for (const r of resp.results) {
+        statuses[r.upload_id] = r.status;
+      }
+      setExtractionStatuses(statuses);
+
+      // Start polling for each triggered file
+      const processingIds = resp.results
+        .filter((r) => r.status === "processing")
+        .map((r) => r.upload_id);
+
+      for (const uploadId of processingIds) {
+        pollExtractionStatus(uploadId);
+      }
+    } catch {
+      setExtractionTriggered(false);
+    }
+  }, [selectedForExtraction]);
+
+  const pollExtractionStatus = useCallback(
+    (uploadId: string) => {
+      const interval = setInterval(async () => {
+        try {
+          const status = await api.get<{ ingestion_status: string }>(
+            `/upload/${uploadId}/status`
+          );
+          setExtractionStatuses((prev) => ({
+            ...prev,
+            [uploadId]: status.ingestion_status,
+          }));
+          if (
+            status.ingestion_status === "awaiting_confirmation" ||
+            status.ingestion_status === "failed" ||
+            status.ingestion_status === "completed"
+          ) {
+            clearInterval(interval);
+            if (status.ingestion_status === "awaiting_confirmation") {
+              const pending = pendingExtractions.find(
+                (p) => p.upload_id === uploadId
+              );
+              setActiveExtractions((prev) => [
+                ...prev,
+                {
+                  uploadId,
+                  filename: pending?.filename || uploadId,
+                  extraction: null,
+                },
+              ]);
+            }
+          }
+        } catch {
+          clearInterval(interval);
+        }
+      }, 2000);
+    },
+    [pendingExtractions]
+  );
+
+  const handleDismissExtractionPanel = useCallback(() => {
+    setPendingExtractions([]);
+    setSelectedForExtraction(new Set());
+    setExtractionTriggered(false);
+    setExtractionStatuses({});
+  }, []);
+
+  const toggleExtractionSelection = useCallback((uploadId: string) => {
+    setSelectedForExtraction((prev) => {
+      const next = new Set(prev);
+      if (next.has(uploadId)) next.delete(uploadId);
+      else next.add(uploadId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAllExtraction = useCallback(() => {
+    if (selectedForExtraction.size === pendingExtractions.length) {
+      setSelectedForExtraction(new Set());
+    } else {
+      setSelectedForExtraction(
+        new Set(pendingExtractions.map((p) => p.upload_id))
+      );
+    }
+  }, [pendingExtractions, selectedForExtraction]);
 
   // --- Entity toggle ---
   const toggleEntity = useCallback((uploadId: string, index: number) => {
@@ -1151,6 +1264,170 @@ export default function UploadPage() {
 
         return null;
       })}
+
+      {/* ==========================================
+          EXTRACTION TRIGGER PANEL
+          ========================================== */}
+      {pendingExtractions.length > 0 && (
+        <RetroCard>
+          <RetroCardHeader>
+            <GlowText as="h3" className="text-base">
+              {pendingExtractions.length} Unstructured File
+              {pendingExtractions.length !== 1 ? "s" : ""} Detected
+            </GlowText>
+            <p
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--theme-text-muted)",
+                fontFamily: "var(--font-body)",
+                marginTop: "0.25rem",
+              }}
+            >
+              Text extraction required for clinical entity recognition
+            </p>
+          </RetroCardHeader>
+          <RetroCardContent>
+            <RetroTable>
+              <RetroTableHeader>
+                <RetroTableHead className="w-8">
+                  <input
+                    type="checkbox"
+                    checked={
+                      selectedForExtraction.size === pendingExtractions.length &&
+                      pendingExtractions.length > 0
+                    }
+                    onChange={toggleSelectAllExtraction}
+                    disabled={extractionTriggered}
+                    style={{ accentColor: "var(--theme-amber)" }}
+                  />
+                </RetroTableHead>
+                <RetroTableHead>File</RetroTableHead>
+                <RetroTableHead>Type</RetroTableHead>
+                <RetroTableHead>Status</RetroTableHead>
+              </RetroTableHeader>
+              <RetroTableBody>
+                {pendingExtractions.map((file) => {
+                  const ext = file.filename.split(".").pop()?.toLowerCase() || "";
+                  const badgeColor =
+                    ext === "pdf"
+                      ? "var(--theme-terracotta)"
+                      : ext === "rtf"
+                        ? "var(--theme-sage)"
+                        : "var(--theme-ochre)";
+                  const currentStatus =
+                    extractionStatuses[file.upload_id] || file.status;
+                  return (
+                    <RetroTableRow key={file.upload_id}>
+                      <RetroTableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedForExtraction.has(file.upload_id)}
+                          onChange={() => toggleExtractionSelection(file.upload_id)}
+                          disabled={extractionTriggered}
+                          style={{ accentColor: "var(--theme-amber)" }}
+                        />
+                      </RetroTableCell>
+                      <RetroTableCell>
+                        <span
+                          style={{
+                            fontSize: "0.75rem",
+                            fontFamily: "var(--font-body)",
+                            color: "var(--theme-text)",
+                            maxWidth: "250px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            display: "inline-block",
+                          }}
+                        >
+                          {file.filename}
+                        </span>
+                      </RetroTableCell>
+                      <RetroTableCell>
+                        <span
+                          style={{
+                            fontSize: "0.6rem",
+                            fontWeight: 700,
+                            padding: "0.1rem 0.4rem",
+                            borderRadius: "3px",
+                            backgroundColor: badgeColor,
+                            color: "var(--theme-bg-deep)",
+                            fontFamily: "var(--font-body)",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {ext}
+                        </span>
+                      </RetroTableCell>
+                      <RetroTableCell>
+                        <span
+                          style={{
+                            fontSize: "0.65rem",
+                            fontWeight: 600,
+                            padding: "0.15rem 0.5rem",
+                            borderRadius: "4px",
+                            fontFamily: "var(--font-body)",
+                            backgroundColor:
+                              currentStatus === "processing"
+                                ? "var(--theme-amber)"
+                                : currentStatus === "awaiting_confirmation"
+                                  ? "var(--theme-sage)"
+                                  : currentStatus === "failed"
+                                    ? "var(--theme-terracotta)"
+                                    : "var(--theme-text-muted)",
+                            color: "var(--theme-bg-deep)",
+                          }}
+                        >
+                          {currentStatus}
+                        </span>
+                      </RetroTableCell>
+                    </RetroTableRow>
+                  );
+                })}
+              </RetroTableBody>
+            </RetroTable>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0.75rem 0 0",
+                borderTop: "1px solid var(--theme-border)",
+                marginTop: "0.5rem",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  color: "var(--theme-text-muted)",
+                  fontFamily: "var(--font-body)",
+                }}
+              >
+                {selectedForExtraction.size} of {pendingExtractions.length} selected
+              </span>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <RetroButton
+                  variant="ghost"
+                  onClick={handleDismissExtractionPanel}
+                >
+                  Do Later
+                </RetroButton>
+                <RetroButton
+                  onClick={handleTriggerExtraction}
+                  disabled={
+                    selectedForExtraction.size === 0 || extractionTriggered
+                  }
+                >
+                  {extractionTriggered
+                    ? "Extracting..."
+                    : `Extract ${selectedForExtraction.size} File${selectedForExtraction.size !== 1 ? "s" : ""}`}
+                </RetroButton>
+              </div>
+            </div>
+          </RetroCardContent>
+        </RetroCard>
+      )}
 
       {/* ==========================================
           UPLOAD HISTORY (COLLAPSIBLE)

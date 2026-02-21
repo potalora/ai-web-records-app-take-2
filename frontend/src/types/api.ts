@@ -88,6 +88,12 @@ export interface UploadResponse {
   status: string;
   records_inserted: number;
   errors: unknown[];
+  unstructured_uploads?: { upload_id: string; filename: string; status: string }[];
+}
+
+export interface TriggerExtractionResponse {
+  triggered: number;
+  results: { upload_id: string; status: string; error?: string }[];
 }
 
 export interface LabItem {
