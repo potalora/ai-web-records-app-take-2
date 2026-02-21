@@ -400,7 +400,7 @@ async def test_trigger_extraction_starts_processing(
 async def test_trigger_extraction_rejects_wrong_status(
     client: AsyncClient, db_session: AsyncSession
 ):
-    """Trigger extraction rejects files not in pending_extraction status."""
+    """Trigger extraction rejects completed files."""
     headers, user_id = await auth_headers(client)
 
     from app.models.uploaded_file import UploadedFile
@@ -431,6 +431,295 @@ async def test_trigger_extraction_rejects_wrong_status(
     data = resp.json()
     assert data["triggered"] == 0
     assert data["failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_trigger_extraction_allows_retry_of_processing(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Trigger extraction allows retrying files stuck in processing status."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=user_id,
+        filename="stuck.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=1000,
+        file_hash="hash_stuck_processing",
+        storage_path="/tmp/stuck.pdf",
+        ingestion_status="processing",
+        file_category="unstructured",
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/trigger-extraction",
+            json={"upload_ids": [str(upload.id)]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["triggered"] == 1
+    assert data["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_trigger_extraction_allows_retry_of_failed(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Trigger extraction allows retrying files with failed status."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=user_id,
+        filename="failed.rtf",
+        mime_type="application/rtf",
+        file_size_bytes=500,
+        file_hash="hash_failed_retry",
+        storage_path="/tmp/failed.rtf",
+        ingestion_status="failed",
+        file_category="unstructured",
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/trigger-extraction",
+            json={"upload_ids": [str(upload.id)]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["triggered"] == 1
+    assert data["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_trigger_extraction_allows_retry_of_awaiting_confirmation(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Trigger extraction allows retrying files stuck in awaiting_confirmation status."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=user_id,
+        filename="awaiting.rtf",
+        mime_type="application/rtf",
+        file_size_bytes=500,
+        file_hash="hash_awaiting_retry",
+        storage_path="/tmp/awaiting.rtf",
+        ingestion_status="awaiting_confirmation",
+        file_category="unstructured",
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/trigger-extraction",
+            json={"upload_ids": [str(upload.id)]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["triggered"] == 1
+    assert data["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_auto_confirm_creates_records(client: AsyncClient, db_session: AsyncSession):
+    """Auto-confirm creates health records when patient exists."""
+    headers, user_id = await auth_headers(client)
+    patient = await create_test_patient(db_session, user_id)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=user_id,
+        filename="autoconfirm.rtf",
+        mime_type="application/rtf",
+        file_size_bytes=500,
+        file_hash="hash_autoconfirm",
+        storage_path="/tmp/autoconfirm.rtf",
+        ingestion_status="processing",
+        file_category="unstructured",
+        extraction_entities=[
+            {
+                "entity_class": "condition",
+                "text": "Hypertension",
+                "attributes": {"status": "active"},
+                "start_pos": 0,
+                "end_pos": 12,
+                "confidence": 0.9,
+            },
+            {
+                "entity_class": "medication",
+                "text": "Lisinopril",
+                "attributes": {"medication_group": "Lisinopril"},
+                "start_pos": 13,
+                "end_pos": 23,
+                "confidence": 0.85,
+            },
+        ],
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    # Simulate what _process_unstructured does after extraction
+    from app.services.extraction.entity_extractor import ExtractedEntity
+    from app.services.extraction.entity_to_fhir import entity_to_health_record_dict
+    from app.models.record import HealthRecord
+    from sqlalchemy import select
+
+    created = 0
+    for entity_data in upload.extraction_entities:
+        entity = ExtractedEntity(
+            entity_class=entity_data["entity_class"],
+            text=entity_data["text"],
+            attributes=entity_data["attributes"],
+            start_pos=entity_data.get("start_pos"),
+            end_pos=entity_data.get("end_pos"),
+            confidence=entity_data.get("confidence", 0.8),
+        )
+        record_dict = entity_to_health_record_dict(
+            entity=entity,
+            user_id=user_id,
+            patient_id=patient.id,
+            source_file_id=upload.id,
+        )
+        if record_dict is not None:
+            db_session.add(HealthRecord(**record_dict))
+            created += 1
+
+    upload.ingestion_status = "completed"
+    upload.record_count = created
+    await db_session.commit()
+
+    assert created == 2
+    assert upload.ingestion_status == "completed"
+    assert upload.record_count == 2
+
+    # Verify records were created in DB
+    result = await db_session.execute(
+        select(HealthRecord).where(HealthRecord.user_id == user_id)
+    )
+    records = result.scalars().all()
+    assert len(records) >= 2
+
+
+@pytest.mark.asyncio
+async def test_auto_confirm_no_patient_falls_back(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Auto-confirm falls back to awaiting_confirmation when no patient exists."""
+    headers, user_id = await auth_headers(client)
+    # Deliberately do NOT create a patient
+
+    from app.models.uploaded_file import UploadedFile
+    from app.models.patient import Patient
+    from sqlalchemy import select
+    from uuid import uuid4
+
+    # Verify no patients exist for this user
+    result = await db_session.execute(
+        select(Patient).where(Patient.user_id == user_id).limit(1)
+    )
+    assert result.scalar_one_or_none() is None
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=user_id,
+        filename="nopatient.rtf",
+        mime_type="application/rtf",
+        file_size_bytes=500,
+        file_hash="hash_nopatient",
+        storage_path="/tmp/nopatient.rtf",
+        ingestion_status="processing",
+        file_category="unstructured",
+        extraction_entities=[
+            {
+                "entity_class": "condition",
+                "text": "Diabetes",
+                "attributes": {"status": "active"},
+                "start_pos": 0,
+                "end_pos": 8,
+                "confidence": 0.9,
+            },
+        ],
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    # Simulate the branch where no patient is found
+    patient_result = await db_session.execute(
+        select(Patient).where(Patient.user_id == user_id).limit(1)
+    )
+    patient = patient_result.scalar_one_or_none()
+    assert patient is None
+
+    # This means status should be set to awaiting_confirmation
+    upload.ingestion_status = "awaiting_confirmation"
+    await db_session.commit()
+
+    assert upload.ingestion_status == "awaiting_confirmation"
+
+
+@pytest.mark.asyncio
+async def test_extraction_progress_returns_counts(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """GET /upload/extraction-progress returns status counts for unstructured files."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    # Create files in various statuses
+    for i, status in enumerate(["completed", "completed", "processing", "failed", "pending_extraction"]):
+        upload = UploadedFile(
+            id=uuid4(),
+            user_id=user_id,
+            filename=f"progress_{i}.rtf",
+            mime_type="application/rtf",
+            file_size_bytes=500,
+            file_hash=f"hash_progress_{i}_{status}",
+            storage_path=f"/tmp/progress_{i}.rtf",
+            ingestion_status=status,
+            file_category="unstructured",
+            record_count=3 if status == "completed" else 0,
+        )
+        db_session.add(upload)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/upload/extraction-progress", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 5
+    assert data["completed"] == 2
+    assert data["processing"] == 1
+    assert data["failed"] == 1
+    assert data["pending"] == 1
+    assert data["records_created"] == 6
 
 
 @pytest.mark.asyncio

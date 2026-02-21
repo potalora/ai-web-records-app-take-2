@@ -84,6 +84,7 @@ class PendingExtractionFile(BaseModel):
     file_category: str
     file_size_bytes: int | None = None
     created_at: str | None = None
+    ingestion_status: str | None = None
 
 
 class TriggerExtractionResult(BaseModel):
@@ -100,3 +101,12 @@ class TriggerExtractionResponse(BaseModel):
 class PendingExtractionResponse(BaseModel):
     files: list[PendingExtractionFile]
     total: int
+
+
+class ExtractionProgressResponse(BaseModel):
+    total: int
+    completed: int
+    processing: int
+    failed: int
+    pending: int
+    records_created: int

@@ -111,6 +111,15 @@ export interface PendingExtractionResponse {
   total: number;
 }
 
+export interface ExtractionProgressResponse {
+  total: number;
+  completed: number;
+  processing: number;
+  failed: number;
+  pending: number;
+  records_created: number;
+}
+
 export interface LabItem {
   id: string;
   display_text: string;

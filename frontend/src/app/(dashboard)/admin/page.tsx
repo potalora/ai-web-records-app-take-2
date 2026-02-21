@@ -73,27 +73,28 @@ export default function AdminPage() {
    ========================================== */
 
 function ExtractionsTab() {
-  const [files, setFiles] = useState<
-    {
-      id: string;
-      filename: string;
-      mime_type: string;
-      file_category: string;
-      file_size_bytes: number | null;
-      created_at: string | null;
-    }[]
-  >([]);
+  interface ExtractionFile {
+    id: string;
+    filename: string;
+    mime_type: string;
+    file_category: string;
+    file_size_bytes: number | null;
+    created_at: string | null;
+    ingestion_status?: string;
+  }
+
+  const [files, setFiles] = useState<ExtractionFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [triggering, setTriggering] = useState(false);
 
-  const fetchPending = useCallback(async () => {
+  const fetchFiles = useCallback(async () => {
     setLoading(true);
     try {
       const resp = await api.get<{
-        files: typeof files;
+        files: ExtractionFile[];
         total: number;
-      }>("/upload/pending-extraction");
+      }>("/upload/pending-extraction?statuses=pending_extraction,processing,failed");
       setFiles(resp.files);
     } catch {
       setFiles([]);
@@ -103,8 +104,8 @@ function ExtractionsTab() {
   }, []);
 
   useEffect(() => {
-    fetchPending();
-  }, [fetchPending]);
+    fetchFiles();
+  }, [fetchFiles]);
 
   const handleTrigger = async () => {
     if (selected.size === 0) return;
@@ -114,7 +115,7 @@ function ExtractionsTab() {
         upload_ids: Array.from(selected),
       });
       setSelected(new Set());
-      setTimeout(fetchPending, 1000);
+      setTimeout(fetchFiles, 1000);
     } catch {
       // Silently fail
     } finally {
@@ -130,7 +131,7 @@ function ExtractionsTab() {
     }
   };
 
-  if (loading) return <RetroLoadingState text="Loading pending extractions" />;
+  if (loading) return <RetroLoadingState text="Loading extractions" />;
 
   if (files.length === 0) {
     return (
@@ -145,12 +146,16 @@ function ExtractionsTab() {
               fontFamily: "var(--font-body)",
             }}
           >
-            No files pending extraction
+            No files pending extraction, processing, or failed
           </p>
         </RetroCardContent>
       </RetroCard>
     );
   }
+
+  const pendingCount = files.filter((f) => f.ingestion_status === "pending_extraction" || !f.ingestion_status).length;
+  const processingCount = files.filter((f) => f.ingestion_status === "processing").length;
+  const failedCount = files.filter((f) => f.ingestion_status === "failed").length;
 
   return (
     <RetroCard>
@@ -162,10 +167,58 @@ function ExtractionsTab() {
             alignItems: "center",
           }}
         >
-          <GlowText as="h3" className="text-sm">
-            {files.length} File{files.length !== 1 ? "s" : ""} Pending
-            Extraction
-          </GlowText>
+          <div>
+            <GlowText as="h3" className="text-sm">
+              {files.length} File{files.length !== 1 ? "s" : ""}
+            </GlowText>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.35rem" }}>
+              {pendingCount > 0 && (
+                <span
+                  style={{
+                    fontSize: "0.6rem",
+                    fontWeight: 600,
+                    padding: "0.1rem 0.4rem",
+                    borderRadius: "3px",
+                    backgroundColor: "var(--theme-ochre)",
+                    color: "var(--theme-bg-deep)",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  {pendingCount} pending
+                </span>
+              )}
+              {processingCount > 0 && (
+                <span
+                  style={{
+                    fontSize: "0.6rem",
+                    fontWeight: 600,
+                    padding: "0.1rem 0.4rem",
+                    borderRadius: "3px",
+                    backgroundColor: "var(--theme-amber)",
+                    color: "var(--theme-bg-deep)",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  {processingCount} processing
+                </span>
+              )}
+              {failedCount > 0 && (
+                <span
+                  style={{
+                    fontSize: "0.6rem",
+                    fontWeight: 600,
+                    padding: "0.1rem 0.4rem",
+                    borderRadius: "3px",
+                    backgroundColor: "var(--theme-terracotta)",
+                    color: "var(--theme-bg-deep)",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  {failedCount} failed
+                </span>
+              )}
+            </div>
+          </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <RetroButton
               onClick={handleTrigger}
@@ -192,6 +245,7 @@ function ExtractionsTab() {
             </RetroTableHead>
             <RetroTableHead>File</RetroTableHead>
             <RetroTableHead>Type</RetroTableHead>
+            <RetroTableHead>Status</RetroTableHead>
             <RetroTableHead>Size</RetroTableHead>
             <RetroTableHead>Uploaded</RetroTableHead>
           </RetroTableHeader>
@@ -204,6 +258,7 @@ function ExtractionsTab() {
                   : ext === "rtf"
                     ? "var(--theme-sage)"
                     : "var(--theme-ochre)";
+              const status = file.ingestion_status || "pending_extraction";
               return (
                 <RetroTableRow key={file.id}>
                   <RetroTableCell>
@@ -247,6 +302,26 @@ function ExtractionsTab() {
                       }}
                     >
                       {ext}
+                    </span>
+                  </RetroTableCell>
+                  <RetroTableCell>
+                    <span
+                      style={{
+                        fontSize: "0.6rem",
+                        fontWeight: 600,
+                        padding: "0.1rem 0.4rem",
+                        borderRadius: "3px",
+                        fontFamily: "var(--font-body)",
+                        backgroundColor:
+                          status === "processing"
+                            ? "var(--theme-amber)"
+                            : status === "failed"
+                              ? "var(--theme-terracotta)"
+                              : "var(--theme-ochre)",
+                        color: "var(--theme-bg-deep)",
+                      }}
+                    >
+                      {status === "pending_extraction" ? "pending" : status}
                     </span>
                   </RetroTableCell>
                   <RetroTableCell>
@@ -298,7 +373,7 @@ function ExtractionsTab() {
           <span>
             {selected.size} of {files.length} selected
           </span>
-          <RetroButton variant="ghost" onClick={fetchPending}>
+          <RetroButton variant="ghost" onClick={fetchFiles}>
             Refresh
           </RetroButton>
         </div>
