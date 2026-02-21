@@ -20,6 +20,10 @@ _gemini_semaphore: asyncio.Semaphore | None = None
 # Extraction semaphore to limit concurrent file extractions (layer above Gemini semaphore)
 _extraction_semaphore: asyncio.Semaphore | None = None
 
+# Queue-based extraction worker state
+_extraction_queue: asyncio.Queue | None = None
+_worker_task: asyncio.Task | None = None
+
 
 def _get_gemini_semaphore() -> asyncio.Semaphore:
     global _gemini_semaphore
@@ -35,10 +39,49 @@ def _get_extraction_semaphore() -> asyncio.Semaphore:
     return _extraction_semaphore
 
 
-async def _throttled_process(upload_id: UUID, file_path: Path, user_id: UUID) -> None:
-    """Run _process_unstructured with extraction concurrency limiting."""
-    async with _get_extraction_semaphore():
+def _get_extraction_queue() -> asyncio.Queue:
+    global _extraction_queue
+    if _extraction_queue is None:
+        _extraction_queue = asyncio.Queue()
+    return _extraction_queue
+
+
+async def _process_and_release(
+    sem: asyncio.Semaphore, upload_id: UUID, file_path: Path, user_id: UUID
+) -> None:
+    """Process one file then release the semaphore."""
+    try:
         await _process_unstructured(upload_id, file_path, user_id)
+    finally:
+        sem.release()
+
+
+async def _extraction_worker() -> None:
+    """Background worker: pull files from queue, process with concurrency limit.
+
+    Only creates tasks when a semaphore slot is available, preventing
+    event loop starvation when many files are queued.
+    """
+    queue = _get_extraction_queue()
+    sem = _get_extraction_semaphore()
+    active: set[asyncio.Task] = set()
+
+    while True:
+        upload_id, file_path, user_id = await queue.get()
+        await sem.acquire()
+        task = asyncio.create_task(
+            _process_and_release(sem, upload_id, file_path, user_id)
+        )
+        active.add(task)
+        task.add_done_callback(active.discard)
+        queue.task_done()
+
+
+def _ensure_worker_running() -> None:
+    """Start the extraction worker if it's not already running."""
+    global _worker_task
+    if _worker_task is None or _worker_task.done():
+        _worker_task = asyncio.create_task(_extraction_worker())
 
 from app.database import get_db
 from app.dependencies import get_authenticated_user_id
@@ -319,16 +362,12 @@ async def trigger_extraction(
     if triggered:
         await db.commit()
 
-    # Launch extraction tasks concurrently (extraction semaphore limits concurrent
-    # files, Gemini semaphore limits API calls within each)
+    # Enqueue files for the background worker (processes up to 5 concurrently,
+    # without creating N idle coroutines that exhaust the DB connection pool)
+    queue = _get_extraction_queue()
+    _ensure_worker_running()
     for upload in triggered:
-        asyncio.create_task(
-            _throttled_process(
-                upload.id,
-                Path(upload.storage_path),
-                user_id,
-            )
-        )
+        await queue.put((upload.id, Path(upload.storage_path), user_id))
 
     await log_audit_event(
         db,

@@ -20,6 +20,9 @@ PATCH_BG_TASK = patch(
     new_callable=AsyncMock,
 )
 
+# Patch the extraction worker so trigger-extraction tests don't start a real background loop.
+PATCH_WORKER = patch("app.api.upload._ensure_worker_running")
+
 
 @pytest.mark.asyncio
 async def test_upload_rtf_creates_record(client: AsyncClient, db_session: AsyncSession):
@@ -382,7 +385,7 @@ async def test_trigger_extraction_starts_processing(
 
     upload_ids = [str(u.id) for u in uploads]
 
-    with PATCH_BG_TASK:
+    with PATCH_BG_TASK, PATCH_WORKER:
         resp = await client.post(
             "/api/v1/upload/trigger-extraction",
             json={"upload_ids": upload_ids},
@@ -420,7 +423,7 @@ async def test_trigger_extraction_rejects_wrong_status(
     db_session.add(upload)
     await db_session.commit()
 
-    with PATCH_BG_TASK:
+    with PATCH_BG_TASK, PATCH_WORKER:
         resp = await client.post(
             "/api/v1/upload/trigger-extraction",
             json={"upload_ids": [str(upload.id)]},
@@ -457,7 +460,7 @@ async def test_trigger_extraction_allows_retry_of_processing(
     db_session.add(upload)
     await db_session.commit()
 
-    with PATCH_BG_TASK:
+    with PATCH_BG_TASK, PATCH_WORKER:
         resp = await client.post(
             "/api/v1/upload/trigger-extraction",
             json={"upload_ids": [str(upload.id)]},
@@ -494,7 +497,7 @@ async def test_trigger_extraction_allows_retry_of_failed(
     db_session.add(upload)
     await db_session.commit()
 
-    with PATCH_BG_TASK:
+    with PATCH_BG_TASK, PATCH_WORKER:
         resp = await client.post(
             "/api/v1/upload/trigger-extraction",
             json={"upload_ids": [str(upload.id)]},
@@ -531,7 +534,7 @@ async def test_trigger_extraction_allows_retry_of_awaiting_confirmation(
     db_session.add(upload)
     await db_session.commit()
 
-    with PATCH_BG_TASK:
+    with PATCH_BG_TASK, PATCH_WORKER:
         resp = await client.post(
             "/api/v1/upload/trigger-extraction",
             json={"upload_ids": [str(upload.id)]},
@@ -756,7 +759,7 @@ async def test_trigger_extraction_rejects_other_users_files(
     db_session.add(upload)
     await db_session.commit()
 
-    with PATCH_BG_TASK:
+    with PATCH_BG_TASK, PATCH_WORKER:
         resp = await client.post(
             "/api/v1/upload/trigger-extraction",
             json={"upload_ids": [str(upload.id)]},
