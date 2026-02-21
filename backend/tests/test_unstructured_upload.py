@@ -351,3 +351,130 @@ async def test_batch_upload_skips_invalid_files(client: AsyncClient, db_session:
     # Only the valid RTF should be accepted
     assert data["total"] == 1
     assert data["uploads"][0]["file_type"] == "rtf"
+
+
+@pytest.mark.asyncio
+async def test_trigger_extraction_starts_processing(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """POST /upload/trigger-extraction triggers processing for pending files."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    uploads = []
+    for i in range(3):
+        upload = UploadedFile(
+            id=uuid4(),
+            user_id=user_id,
+            filename=f"note_{i}.rtf",
+            mime_type="application/rtf",
+            file_size_bytes=500,
+            file_hash=f"hash_trigger_{i}",
+            storage_path=f"/tmp/note_{i}.rtf",
+            ingestion_status="pending_extraction",
+            file_category="unstructured",
+        )
+        db_session.add(upload)
+        uploads.append(upload)
+    await db_session.commit()
+
+    upload_ids = [str(u.id) for u in uploads]
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/trigger-extraction",
+            json={"upload_ids": upload_ids},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["triggered"] == 3
+    assert data["failed"] == 0
+    assert len(data["results"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_trigger_extraction_rejects_wrong_status(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Trigger extraction rejects files not in pending_extraction status."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=user_id,
+        filename="completed.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=1000,
+        file_hash="hash_done_trigger",
+        storage_path="/tmp/completed.pdf",
+        ingestion_status="completed",
+        file_category="structured",
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/trigger-extraction",
+            json={"upload_ids": [str(upload.id)]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["triggered"] == 0
+    assert data["failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_trigger_extraction_rejects_other_users_files(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Trigger extraction rejects files not owned by the current user."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from app.models.user import User
+    from uuid import uuid4
+
+    other_user = User(
+        id=uuid4(),
+        email="trigger_other_user_encrypted",
+        password_hash="$2b$12$fakefakefakefakefakefuaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        is_active=True,
+    )
+    db_session.add(other_user)
+    await db_session.flush()
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=other_user.id,
+        filename="other_note.rtf",
+        mime_type="application/rtf",
+        file_size_bytes=500,
+        file_hash="hash_other_trigger_test",
+        storage_path="/tmp/other_trigger.rtf",
+        ingestion_status="pending_extraction",
+        file_category="unstructured",
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    with PATCH_BG_TASK:
+        resp = await client.post(
+            "/api/v1/upload/trigger-extraction",
+            json={"upload_ids": [str(upload.id)]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["triggered"] == 0
+    assert data["failed"] == 1

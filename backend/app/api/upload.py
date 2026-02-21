@@ -214,6 +214,73 @@ async def get_pending_extractions(
     }
 
 
+@router.post("/trigger-extraction")
+async def trigger_extraction(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(get_authenticated_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Trigger text+entity extraction for pending unstructured files."""
+    from app.schemas.upload import TriggerExtractionRequest
+
+    req = TriggerExtractionRequest(**body)
+    upload_ids = [UUID(uid) for uid in req.upload_ids]
+
+    # Bulk fetch only uploads owned by this user (HIPAA: row-level security)
+    result = await db.execute(
+        select(UploadedFile).where(
+            UploadedFile.id.in_(upload_ids),
+            UploadedFile.user_id == user_id,
+        )
+    )
+    uploads = {u.id: u for u in result.scalars().all()}
+
+    triggered = []
+    failed = []
+
+    for uid in upload_ids:
+        upload = uploads.get(uid)
+        if not upload:
+            failed.append({"upload_id": str(uid), "status": "not_found"})
+            continue
+        if upload.ingestion_status != "pending_extraction":
+            failed.append({"upload_id": str(uid), "status": upload.ingestion_status})
+            continue
+
+        upload.ingestion_status = "processing"
+        triggered.append(upload)
+
+    if triggered:
+        await db.commit()
+
+    # Queue background tasks after commit
+    for upload in triggered:
+        background_tasks.add_task(
+            _process_unstructured,
+            upload.id,
+            Path(upload.storage_path),
+            user_id,
+        )
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="upload.trigger_extraction",
+        resource_type="uploaded_file",
+        resource_id=None,
+        details={"triggered": len(triggered), "failed": len(failed)},
+    )
+
+    return {
+        "triggered": len(triggered),
+        "failed": len(failed),
+        "results": [
+            {"upload_id": str(u.id), "status": "processing"} for u in triggered
+        ] + failed,
+    }
+
+
 @router.get("/{upload_id}/status", response_model=UploadStatusResponse)
 async def get_upload_status(
     upload_id: UUID,
