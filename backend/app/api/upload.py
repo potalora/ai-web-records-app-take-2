@@ -34,6 +34,7 @@ from app.schemas.upload import (
     ConfirmExtractionRequest,
     ExtractedEntitySchema,
     ExtractionResultResponse,
+    PendingExtractionFile,
     UnstructuredUploadResponse,
     UploadHistoryResponse,
     UploadResponse,
@@ -172,6 +173,45 @@ async def upload_epic_export(
         records_inserted=result["records_inserted"],
         errors=result.get("errors", []),
     )
+
+
+@router.get("/pending-extraction")
+async def get_pending_extractions(
+    user_id: UUID = Depends(get_authenticated_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """List all files with pending_extraction status for this user."""
+    result = await db.execute(
+        select(UploadedFile)
+        .where(UploadedFile.user_id == user_id)
+        .where(UploadedFile.ingestion_status == "pending_extraction")
+        .order_by(UploadedFile.created_at.desc())
+    )
+    files = result.scalars().all()
+
+    await log_audit_event(
+        db,
+        user_id=user_id,
+        action="upload.pending_extraction.list",
+        resource_type="uploaded_file",
+        resource_id=None,
+        details={"count": len(files)},
+    )
+
+    return {
+        "files": [
+            PendingExtractionFile(
+                id=str(f.id),
+                filename=f.filename,
+                mime_type=f.mime_type,
+                file_category=f.file_category,
+                file_size_bytes=f.file_size_bytes,
+                created_at=f.created_at.isoformat() if f.created_at else None,
+            ).model_dump()
+            for f in files
+        ],
+        "total": len(files),
+    }
 
 
 @router.get("/{upload_id}/status", response_model=UploadStatusResponse)

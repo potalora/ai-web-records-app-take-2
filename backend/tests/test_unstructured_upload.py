@@ -258,6 +258,78 @@ async def test_batch_upload_endpoint(client: AsyncClient, db_session: AsyncSessi
 
 
 @pytest.mark.asyncio
+async def test_pending_extraction_lists_pending_files(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """GET /upload/pending-extraction returns files with pending_extraction status."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from uuid import uuid4
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=user_id,
+        filename="test_note.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=1234,
+        file_hash="abc123pendingtest",
+        storage_path="/tmp/test.pdf",
+        ingestion_status="pending_extraction",
+        file_category="unstructured",
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/upload/pending-extraction", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["files"][0]["filename"] == "test_note.pdf"
+    assert data["files"][0]["id"] == str(upload.id)
+
+
+@pytest.mark.asyncio
+async def test_pending_extraction_excludes_other_users(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Pending extraction only returns files owned by the current user."""
+    headers, user_id = await auth_headers(client)
+
+    from app.models.uploaded_file import UploadedFile
+    from app.models.user import User
+    from uuid import uuid4
+
+    other_user = User(
+        id=uuid4(),
+        email="other_pending_encrypted",
+        password_hash="$2b$12$fakefakefakefakefakefuaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        is_active=True,
+    )
+    db_session.add(other_user)
+    await db_session.flush()
+
+    upload = UploadedFile(
+        id=uuid4(),
+        user_id=other_user.id,
+        filename="other_note.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=1234,
+        file_hash="xyz789pendingother",
+        storage_path="/tmp/other.pdf",
+        ingestion_status="pending_extraction",
+        file_category="unstructured",
+    )
+    db_session.add(upload)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/upload/pending-extraction", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 0
+
+
+@pytest.mark.asyncio
 async def test_batch_upload_skips_invalid_files(client: AsyncClient, db_session: AsyncSession):
     """Batch endpoint skips unsupported file types and invalid magic bytes."""
     headers, user_id = await auth_headers(client)
