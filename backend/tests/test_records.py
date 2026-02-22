@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.record import HealthRecord
 from tests.conftest import auth_headers, create_test_patient, seed_test_records
 
 
@@ -185,3 +188,62 @@ async def test_delete_record_excluded_from_get(client: AsyncClient, db_session: 
     await client.delete(f"/api/v1/records/{records[0].id}", headers=headers)
     resp = await client.get(f"/api/v1/records/{records[0].id}", headers=headers)
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_record_includes_ai_metadata(client: AsyncClient, db_session: AsyncSession):
+    """GET /records/:id includes ai_extracted and confidence_score."""
+    headers, uid = await auth_headers(client)
+    patient = await create_test_patient(db_session, uid)
+
+    rec = HealthRecord(
+        id=uuid4(),
+        patient_id=patient.id,
+        user_id=uid,
+        record_type="condition",
+        fhir_resource_type="Condition",
+        fhir_resource={"resourceType": "Condition", "code": {"text": "AI Test Condition"}},
+        source_format="ai_extraction",
+        display_text="AI Test Condition",
+        ai_extracted=True,
+        confidence_score=0.85,
+    )
+    db_session.add(rec)
+    await db_session.commit()
+    await db_session.refresh(rec)
+
+    resp = await client.get(f"/api/v1/records/{rec.id}", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ai_extracted"] is True
+    assert data["confidence_score"] == 0.85
+
+
+@pytest.mark.asyncio
+async def test_list_records_includes_ai_metadata(client: AsyncClient, db_session: AsyncSession):
+    """GET /records list includes ai_extracted and confidence_score on items."""
+    headers, uid = await auth_headers(client)
+    patient = await create_test_patient(db_session, uid)
+
+    rec = HealthRecord(
+        id=uuid4(),
+        patient_id=patient.id,
+        user_id=uid,
+        record_type="observation",
+        fhir_resource_type="Observation",
+        fhir_resource={"resourceType": "Observation", "code": {"text": "AI Test Lab"}},
+        source_format="ai_extraction",
+        display_text="AI Test Lab",
+        ai_extracted=True,
+        confidence_score=0.72,
+    )
+    db_session.add(rec)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/records", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    ai_item = next(i for i in data["items"] if i["display_text"] == "AI Test Lab")
+    assert ai_item["ai_extracted"] is True
+    assert ai_item["confidence_score"] == 0.72

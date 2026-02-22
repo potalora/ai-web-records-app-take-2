@@ -136,7 +136,7 @@ class TestFHIRParser:
         """Verify sample bundle has expected entries."""
         bundle = _load_sample_bundle()
         entries = bundle.get("entry", [])
-        assert len(entries) == 3  # Patient + Condition + Observation
+        assert len(entries) == 18  # Patient + 17 clinical resource entries
 
     def test_map_all_sample_entries(self):
         """Map all non-Patient entries from sample bundle."""
@@ -148,10 +148,12 @@ class TestFHIRParser:
                 result = map_fhir_resource(resource)
                 if result:
                     mapped.append(result)
-        assert len(mapped) == 2
+        assert len(mapped) >= 10  # Most of the 17 non-Patient entries should map
         types = {m["record_type"] for m in mapped}
         assert "condition" in types
         assert "observation" in types
+        assert "medication" in types
+        assert "encounter" in types
 
 
 class TestEpicMappers:
