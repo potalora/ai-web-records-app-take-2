@@ -41,8 +41,8 @@ async def test_upload_synthetic_fhir(client: AsyncClient, db_session: AsyncSessi
     data = resp.json()
     assert "upload_id" in data
     assert data["status"] == "completed"
-    # Sample bundle has 1 Patient (skipped) + 1 Condition + 1 Observation = 2 records
-    assert data["records_inserted"] == 2
+    # Sample bundle has 1 Patient (skipped) + 17 clinical resources = 17 records
+    assert data["records_inserted"] == 17
     assert isinstance(data["errors"], list)
 
 
@@ -79,10 +79,12 @@ async def test_upload_records_appear_in_records(client: AsyncClient, db_session:
 
     resp = await client.get("/api/v1/records", headers=headers)
     data = resp.json()
-    assert data["total"] == 2
+    assert data["total"] == 17
     types = {item["record_type"] for item in data["items"]}
     assert "condition" in types
     assert "observation" in types
+    assert "medication" in types
+    assert "encounter" in types
 
 
 @pytest.mark.asyncio
@@ -104,7 +106,7 @@ async def test_upload_status(client: AsyncClient, db_session: AsyncSession):
     data = status_resp.json()
     assert data["upload_id"] == upload_id
     assert data["ingestion_status"] == "completed"
-    assert data["record_count"] == 2
+    assert data["record_count"] == 17
     # Fix 4: total_file_count must be present
     assert "total_file_count" in data
     assert data["total_file_count"] >= 1

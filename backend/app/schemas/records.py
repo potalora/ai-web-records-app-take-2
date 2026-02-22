@@ -20,6 +20,8 @@ class HealthRecordResponse(BaseModel):
     code_value: str | None
     code_display: str | None
     display_text: str
+    ai_extracted: bool = False
+    confidence_score: float | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

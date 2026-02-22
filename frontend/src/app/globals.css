@@ -149,6 +149,15 @@
   --record-care_plan-bg: #eef5eb;
   --record-care_plan-text: #3d6632;
   --record-care_plan-dot: #5a7a50;
+  --record-care_team-bg: #eef5eb;
+  --record-care_team-text: #3d6632;
+  --record-care_team-dot: #5a7a50;
+  --record-questionnaire_response-bg: #f0ece6;
+  --record-questionnaire_response-text: #5a5040;
+  --record-questionnaire_response-dot: #8a7a6a;
+  --record-immunization_recommendation-bg: #fdf6e3;
+  --record-immunization_recommendation-text: #7a6200;
+  --record-immunization_recommendation-dot: #b8960b;
   --record-default-bg: #f0ece6;
   --record-default-text: #5a5040;
   --record-default-dot: #8a7a6a;
@@ -249,6 +258,15 @@
   --record-care_plan-bg: #1e2e1a;
   --record-care_plan-text: #7a8c5a;
   --record-care_plan-dot: #7a8c5a;
+  --record-care_team-bg: #1e2e1a;
+  --record-care_team-text: #7a8c5a;
+  --record-care_team-dot: #7a8c5a;
+  --record-questionnaire_response-bg: #252018;
+  --record-questionnaire_response-text: #8a7a6a;
+  --record-questionnaire_response-dot: #8a7a6a;
+  --record-immunization_recommendation-bg: #2e2214;
+  --record-immunization_recommendation-text: #d49a40;
+  --record-immunization_recommendation-dot: #d49a40;
   --record-default-bg: #252018;
   --record-default-text: #8a7a6a;
   --record-default-dot: #8a7a6a;
@@ -359,4 +377,84 @@ select {
 select option {
   background-color: var(--theme-bg-surface);
   color: var(--theme-text);
+}
+
+/* ============================================
+   COLLAPSIBLE / ADVANCED SECTION
+   ============================================ */
+
+@keyframes chevron-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(180deg); }
+}
+
+.advanced-chevron {
+  transition: transform 0.2s ease;
+}
+
+.advanced-chevron[data-open="true"] {
+  transform: rotate(180deg);
+}
+
+/* ============================================
+   RECORD ACCENT LEFT BORDER
+   ============================================ */
+
+.record-accent-left {
+  border-left: 3px solid var(--accent-color, var(--theme-border));
+  padding-left: 12px;
+}
+
+/* ============================================
+   JSON SYNTAX HIGHLIGHTING (CSS-ONLY)
+   ============================================ */
+
+.json-syntax .json-key { color: var(--theme-amber); }
+.json-syntax .json-string { color: var(--theme-sage); }
+.json-syntax .json-number { color: var(--theme-ochre); }
+.json-syntax .json-boolean { color: var(--theme-terracotta); }
+.json-syntax .json-null { color: var(--theme-text-muted); }
+.json-syntax .json-brace { color: var(--theme-text-dim); }
+
+/* ============================================
+   REFERENCE RANGE GAUGE
+   ============================================ */
+
+.range-gauge {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--theme-bg-deep);
+  overflow: visible;
+}
+
+.range-gauge-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--theme-border-active);
+}
+
+.range-gauge-indicator {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--theme-bg-surface);
+}
+
+/* ============================================
+   PULSE DOT ANIMATION
+   ============================================ */
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--dot-color); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px transparent; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
 }

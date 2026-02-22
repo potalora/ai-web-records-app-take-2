@@ -36,6 +36,8 @@ export interface HealthRecord {
   code_value: string | null;
   code_display: string | null;
   display_text: string;
+  ai_extracted: boolean;
+  confidence_score: number | null;
   created_at: string;
 }
 
